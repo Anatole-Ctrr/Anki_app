@@ -95,16 +95,11 @@ python -m unittest tests/test_package.py
 Le projet inclut déjà le fichier de workflow automatique [deploy.yml](file:///.github/workflows/deploy.yml).
 
 Pour activer votre site en ligne :
-1. Créez un dépôt sur GitHub et poussez vos fichiers :
+1. Poussez vos fichiers vers GitHub :
    ```bash
-   git init
-   git add .
-   git commit -m "Initial commit - Anki Web Player"
-   git branch -M main
-   git remote add origin https://github.com/VOTRE_PSEUDO/VOTRE_REPO.git
    git push -u origin main
    ```
-2. Sur GitHub, allez dans **Settings** > **Pages** de votre dépôt.
+2. Sur GitHub, allez dans **Settings** > **Pages** de votre dépôt ([https://github.com/Anatole-Ctrr/Anki_app/settings/pages](https://github.com/Anatole-Ctrr/Anki_app/settings/pages)).
 3. Sous **Build and deployment > Source**, choisissez **GitHub Actions** (ou **Deploy from a branch** > `main` > `/ (root)`).
-4. Votre application sera instantanément disponible en ligne à l'adresse :  
-   `https://VOTRE_PSEUDO.github.io/VOTRE_REPO/`
+4. Votre application sera disponible en ligne à l'adresse :  
+   `https://anatole-ctrr.github.io/Anki_app/`
