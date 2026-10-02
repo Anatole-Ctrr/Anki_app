@@ -1,0 +1,70 @@
+/* Styles personnalisés pour la Web App Anki */
+
+/* Animation douce d'apparition de la réponse */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Zone de contenu de la carte (isolation du CSS injecté) */
+#card-container {
+  min-height: 280px;
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+#card-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+#card-container::-webkit-scrollbar-thumb {
+  background-color: rgba(156, 163, 175, 0.4);
+  border-radius: 9999px;
+}
+
+/* Style standard pour les cartes Cloze */
+.cloze {
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+/* Séparateur horizontal de réponse Anki standard */
+#card-back hr#answer,
+#card-back hr {
+  border: 0;
+  height: 1px;
+  background-color: #cbd5e1;
+  margin: 1.5rem 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  #card-back hr#answer,
+  #card-back hr {
+    background-color: #334155;
+  }
+}
+
+/* Images dans les cartes */
+#card-front img,
+#card-back img {
+  display: block;
+  margin: 0.75rem auto;
+  border-radius: 0.5rem;
+  max-height: 320px;
+  object-fit: contain;
+}
+
+/* Audio dans les cartes */
+audio {
+  outline: none;
+}
