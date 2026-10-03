@@ -51,6 +51,8 @@
   <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
   <!-- Chart.js pour graphiques de statistiques -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- Stockage persistant IndexedDB pour la bibliothèque Anatole -->
+  <script src="js/library_store.js"></script>
 </head>
 <body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-full flex flex-col font-sans antialiased">
 
@@ -63,7 +65,7 @@
         </div>
         <div>
           <h1 class="font-bold text-lg leading-tight tracking-tight text-slate-900 dark:text-white">Anki Web Player</h1>
-          <p class="text-xs text-slate-500 dark:text-slate-400">Lecteur de paquets .apkg 100% local</p>
+          <p class="text-xs text-slate-500 dark:text-slate-400">Bibliothèque & Révision Quizlet local</p>
         </div>
       </div>
 
@@ -83,19 +85,20 @@
         </div>
       </div>
 
-      <!-- Actions de navigation (affichées après chargement d'un deck) -->
+      <!-- Actions de navigation (affichées après chargement) -->
       <div id="header-actions" class="flex items-center space-x-3">
-        <select id="deck-select" class="hidden sm:block text-sm bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg px-3 py-1.5 border border-slate-300 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </select>
+        <button id="toggle-library-btn" class="hidden sm:inline-flex text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-600 transition-colors items-center gap-1.5">
+          📂 Ma Bibliothèque (<span id="library-count-badge">0</span>)
+        </button>
         <button id="btn-new-deck" class="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
-          📁 Ouvrir un fichier
+          📁 Ajouter un .apkg
         </button>
       </div>
     </div>
   </header>
 
   <!-- Zone Principale -->
-  <main class="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 flex flex-col">
+  <main class="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 flex flex-col">
 
     <!-- 1. ÉCRAN DE TÉLÉVERSEMENT (Initial) -->
     <section id="upload-section" class="my-auto py-10 flex flex-col items-center justify-center">
@@ -104,10 +107,10 @@
           🔒 100% Client-Side & Conforme RGPD
         </span>
         <h2 class="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight sm:text-4xl mb-3">
-          Révisez vos cartes Anki directement en ligne
+          Bibliothèque de cartes Anki & Révision
         </h2>
         <p class="text-slate-600 dark:text-slate-300 text-base leading-relaxed">
-          Ouvrez n'importe quel fichier <code class="bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded text-sm font-semibold">.apkg</code>. Vos fiches, images et sons sont lus instantanément dans votre navigateur via WebAssembly sans jamais être envoyés sur un serveur.
+          Ouvrez vos fichiers <code class="bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded text-sm font-semibold">.apkg</code>. Vos dossiers sont enregistrés dans votre session, navigables en arborescence et révisables style Quizlet !
         </p>
       </div>
 
@@ -130,9 +133,9 @@
 
       <!-- Bouton de test direct -->
       <div class="mt-8 flex flex-col sm:flex-row items-center gap-3">
-        <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Pas de fichier sous la main ?</span>
+        <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Pas de fichier sous la hand ?</span>
         <button id="load-demo-btn" class="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 underline underline-offset-4 flex items-center gap-1.5">
-          ✨ Tester immédiatement avec le paquet de démonstration
+          ✨ Charger le paquet démo avec arborescence & sous-paquets
         </button>
       </div>
     </section>
@@ -153,227 +156,276 @@
         </button>
       </nav>
 
-      <!-- VUE 1 : MODE RÉVISION (FLASHCARDS) -->
-      <div id="view-study" class="flex-1 flex flex-col max-w-3xl mx-auto w-full">
-
-        <!-- Barre de contrôle supérieure -->
-        <div class="flex items-center justify-between mb-4">
-          <div>
-            <h2 id="current-deck-name" class="font-bold text-xl text-slate-900 dark:text-white">Paquet</h2>
-            <div id="card-tags" class="flex flex-wrap gap-1.5 mt-1"></div>
+      <!-- PANNEAU BIBLIOTHÈQUE & ARBORESCENCE (+/-) -->
+      <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1 items-start">
+        
+        <!-- SIDEBAR BIBLIOTHÈQUE DE DOSSIERS ET PAQUETS -->
+        <aside id="library-sidebar" class="lg:col-span-1 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 shadow-sm space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
+            <h3 class="font-bold text-sm text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+              📂 Mes Paquets
+            </h3>
+            <span class="text-xs text-slate-400" id="tree-total-cards">0 cartes</span>
           </div>
-          <div class="flex items-center space-x-3">
-            <!-- Chronomètre de réponse -->
-            <div id="card-timer-container" class="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 rounded-lg text-xs font-mono font-bold shadow-sm" title="Temps de réflexion sur cette carte">
-              ⏱️ <span id="card-timer">0.0s</span>
+
+          <!-- Arborescence hiérarchique avec boutons + / - -->
+          <div id="deck-tree-container" class="space-y-1 overflow-y-auto max-h-[500px] pr-1">
+            <!-- Arborescence générée dynamiquement en JS -->
+          </div>
+
+          <!-- Section fichiers sauvegardés en IndexedDB -->
+          <div class="pt-3 border-t border-slate-200 dark:border-slate-700">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">Dossiers sauvegardés</span>
+              <button id="clear-library-btn" class="text-[11px] text-red-500 hover:underline">Vider tout</button>
+            </div>
+            <div id="saved-packages-list" class="space-y-1 text-xs">
+              <!-- Liste IndexedDB -->
+            </div>
+          </div>
+        </aside>
+
+        <!-- ZONE DE CONTENU PRINCIPALE (RÉVISION / EXPLORATEUR / STATS) -->
+        <div class="lg:col-span-3 flex-1 flex flex-col w-full">
+
+          <!-- VUE 1 : MODE RÉVISION (FLASHCARDS) -->
+          <div id="view-study" class="flex-1 flex flex-col w-full">
+
+            <!-- Barre de contrôle supérieure -->
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div>
+                <h2 id="current-deck-name" class="font-bold text-xl text-slate-900 dark:text-white">Paquet</h2>
+                <div id="card-tags" class="flex flex-wrap gap-1.5 mt-1"></div>
+              </div>
+              <div class="flex items-center space-x-2 sm:space-x-3">
+                
+                <!-- Bouton Quizlet Mode : Réviser uniquement les cartes marquées ⭐ -->
+                <button id="filter-starred-btn" class="px-3 py-1 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700/50 rounded-lg text-xs font-semibold hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors flex items-center gap-1.5" title="Mode Quizlet : réviser uniquement les cartes marquées ⭐">
+                  <span>⭐ Cartes marquées</span>
+                  <span id="starred-count-badge" class="px-1.5 py-0.2 bg-amber-200 dark:bg-amber-800 rounded-full font-bold">0</span>
+                </button>
+
+                <!-- Chronomètre de réponse -->
+                <div id="card-timer-container" class="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 rounded-lg text-xs font-mono font-bold shadow-sm" title="Temps de réflexion sur cette carte">
+                  ⏱️ <span id="card-timer">0.0s</span>
+                </div>
+
+                <button id="shuffle-btn" title="Mélanger les cartes" class="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 text-sm font-medium transition-colors">
+                  🔀 Mélanger
+                </button>
+                <span id="card-counter" class="text-sm font-mono font-semibold px-2.5 py-1 bg-slate-200 dark:bg-slate-800 rounded-lg text-slate-700 dark:text-slate-300">
+                  0 / 0
+                </span>
+              </div>
             </div>
 
-            <button id="shuffle-btn" title="Mélanger les cartes" class="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 text-sm font-medium transition-colors">
-              🔀 Mélanger
-            </button>
-            <span id="card-counter" class="text-sm font-mono font-semibold px-2.5 py-1 bg-slate-200 dark:bg-slate-800 rounded-lg text-slate-700 dark:text-slate-300">
-              0 / 0
-            </span>
-          </div>
-        </div>
-
-        <!-- Barre de progression -->
-        <div class="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden mb-6">
-          <div id="card-progress-bar" class="bg-blue-600 h-full w-0 transition-all duration-300"></div>
-        </div>
-
-        <!-- CARTE FLASHCARD -->
-        <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col flex-1">
-          <div id="card-container" class="p-8 sm:p-10 flex-1 flex flex-col">
-            <!-- RECTO (Question) -->
-            <div id="card-front" class="text-xl sm:text-2xl text-center leading-relaxed font-medium text-slate-800 dark:text-slate-100 my-auto">
-              <!-- Rendu dynamique -->
+            <!-- Barre de progression -->
+            <div class="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden mb-6">
+              <div id="card-progress-bar" class="bg-blue-600 h-full w-0 transition-all duration-300"></div>
             </div>
 
-            <!-- VERSO (Réponse masquée au début) -->
-            <div id="card-answer-section" class="hidden mt-6 pt-6 border-t border-slate-200 dark:border-slate-700 animate-fade-in">
-              <div id="card-back" class="text-lg sm:text-xl text-center leading-relaxed text-slate-700 dark:text-slate-200">
-                <!-- Rendu dynamique -->
+            <!-- CARTE FLASHCARD -->
+            <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col flex-1 relative">
+              
+              <!-- Bouton Étoile ⭐ sur la carte (Quizlet Star) -->
+              <button id="star-card-btn" class="absolute top-4 right-4 p-2 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-slate-400 transition-all z-20 text-xl" title="Marquer cette carte (Étoile Quizlet - Raccourci *)">
+                ⭐
+              </button>
+
+              <div id="card-container" class="p-8 sm:p-10 flex-1 flex flex-col">
+                <!-- RECTO (Question) -->
+                <div id="card-front" class="text-xl sm:text-2xl text-center leading-relaxed font-medium text-slate-800 dark:text-slate-100 my-auto">
+                  <!-- Rendu dynamique -->
+                </div>
+
+                <!-- VERSO (Réponse masquée au début) -->
+                <div id="card-answer-section" class="hidden mt-6 pt-6 border-t border-slate-200 dark:border-slate-700 animate-fade-in">
+                  <div id="card-back" class="text-lg sm:text-xl text-center leading-relaxed text-slate-700 dark:text-slate-200">
+                    <!-- Rendu dynamique -->
+                  </div>
+                </div>
+              </div>
+
+              <!-- BARRE D'ACTIONS INFERIEURE -->
+              <div class="bg-slate-50 dark:bg-slate-850 p-4 border-t border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-4">
+                
+                <!-- Navigation précédente/suivante -->
+                <div class="flex items-center space-x-2">
+                  <button id="prev-card-btn" class="px-3 py-2 text-sm font-medium rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+                    ← Précédente
+                  </button>
+                  <button id="next-card-btn" class="px-3 py-2 text-sm font-medium rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+                    Suivante →
+                  </button>
+                </div>
+
+                <!-- Bouton Afficher la Réponse (État initial) -->
+                <button id="show-answer-btn" class="w-full sm:w-auto px-8 py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-500/20 active:scale-98 transition-all flex items-center justify-center gap-2">
+                  <span>Afficher la réponse</span>
+                  <kbd class="hidden sm:inline-block px-2 py-0.5 text-xs bg-blue-800/40 rounded border border-blue-400/30">Espace</kbd>
+                </button>
+
+                <!-- Boutons d'Évaluation SRS (Après affichage de la réponse) -->
+                <div id="rating-buttons-section" class="hidden w-full sm:w-auto grid grid-cols-4 gap-2">
+                  <button class="rating-btn rating-1 px-3 py-2 text-xs sm:text-sm font-semibold rounded-lg bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900/40 dark:text-red-300 transition-colors">
+                    À revoir <span class="block text-[10px] opacity-70">(1)</span>
+                  </button>
+                  <button class="rating-btn rating-2 px-3 py-2 text-xs sm:text-sm font-semibold rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 transition-colors">
+                    Difficile <span class="block text-[10px] opacity-70">(2)</span>
+                  </button>
+                  <button class="rating-btn rating-3 px-3 py-2 text-xs sm:text-sm font-semibold rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 transition-colors">
+                    Correct <span class="block text-[10px] opacity-70">(3)</span>
+                  </button>
+                  <button class="rating-btn rating-4 px-3 py-2 text-xs sm:text-sm font-semibold rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 transition-colors">
+                    Facile <span class="block text-[10px] opacity-70">(4)</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <p class="text-xs text-center text-slate-400 mt-4">
+              Astuce : Appuyez sur <kbd class="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-800 rounded">*</kbd> pour marquer la carte avec une étoile ⭐.
+            </p>
+          </div>
+
+          <!-- VUE 2 : EXPLORATEUR DE CARTES -->
+          <div id="view-explorer" class="hidden flex-1 flex flex-col">
+            <div class="flex items-center justify-between mb-4">
+              <input type="text" id="search-input" placeholder="🔍 Rechercher dans les cartes ou les tags..." class="w-full max-w-md bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <span id="explorer-card-count" class="text-xs text-slate-500 font-medium"></span>
+            </div>
+
+            <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+              <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                  <thead>
+                    <tr class="bg-slate-100 dark:bg-slate-750 text-slate-600 dark:text-slate-300 text-xs font-semibold uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
+                      <th class="py-3 px-3 w-10 text-center">⭐</th>
+                      <th class="py-3 px-3 w-10">#</th>
+                      <th class="py-3 px-4">Recto (Question)</th>
+                      <th class="py-3 px-4">Verso (Réponse)</th>
+                      <th class="py-3 px-4 w-32">Tags</th>
+                    </tr>
+                  </thead>
+                  <tbody id="cards-table-body" class="divide-y divide-slate-200 dark:divide-slate-700">
+                    <!-- Rendu dynamique -->
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
 
-          <!-- BARRE D'ACTIONS INFERIEURE -->
-          <div class="bg-slate-50 dark:bg-slate-850 p-4 border-t border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <!-- VUE 3 : STATISTIQUES & ANALYTICS -->
+          <div id="view-stats" class="hidden flex-1 flex flex-col w-full space-y-6">
             
-            <!-- Navigation précédente/suivante -->
-            <div class="flex items-center space-x-2">
-              <button id="prev-card-btn" class="px-3 py-2 text-sm font-medium rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
-                ← Précédente
-              </button>
-              <button id="next-card-btn" class="px-3 py-2 text-sm font-medium rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
-                Suivante →
-              </button>
+            <!-- Cartes Gamification / Synthèse -->
+            <div>
+              <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                🏆 Tableau de Bord d'Apprentissage
+              </h3>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
+                  <div class="text-2xl mb-1">🔥</div>
+                  <span class="text-2xl font-black text-amber-500" id="dash-streak">0 jour</span>
+                  <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Série Actuelle</p>
+                </div>
+                <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
+                  <div class="text-2xl mb-1">⚡</div>
+                  <span class="text-2xl font-black text-purple-600 dark:text-purple-400" id="dash-xp">0 XP</span>
+                  <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Total Expérience</p>
+                </div>
+                <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
+                  <div class="text-2xl mb-1">⏱️</div>
+                  <span class="text-2xl font-black text-blue-600 dark:text-blue-400" id="dash-avg-time">0.0s</span>
+                  <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Temps Moyen / Carte</p>
+                </div>
+                <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
+                  <div class="text-2xl mb-1">🎯</div>
+                  <span class="text-2xl font-black text-emerald-600 dark:text-emerald-400" id="dash-accuracy">100%</span>
+                  <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Taux de Précision</p>
+                </div>
+              </div>
             </div>
 
-            <!-- Bouton Afficher la Réponse (État initial) -->
-            <button id="show-answer-btn" class="w-full sm:w-auto px-8 py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-500/20 active:scale-98 transition-all flex items-center justify-center gap-2">
-              <span>Afficher la réponse</span>
-              <kbd class="hidden sm:inline-block px-2 py-0.5 text-xs bg-blue-800/40 rounded border border-blue-400/30">Espace</kbd>
-            </button>
+            <!-- CALENDRIER DE RÉTENTION (HEATMAP) -->
+            <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+              <div class="flex items-center justify-between mb-4">
+                <h4 class="font-bold text-sm text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                  📅 Calendrier de Rétention & Assiduité (60 derniers jours)
+                </h4>
+                <span class="text-xs text-slate-500" id="heatmap-total-reviews">0 révision(s) au total</span>
+              </div>
+              
+              <div id="retention-heatmap" class="grid grid-cols-10 sm:grid-cols-15 md:grid-cols-20 gap-1.5 justify-center py-2">
+                <!-- Cases générées dynamiquement en JS -->
+              </div>
 
-            <!-- Boutons d'Évaluation SRS (Après affichage de la réponse) -->
-            <div id="rating-buttons-section" class="hidden w-full sm:w-auto grid grid-cols-4 gap-2">
-              <button class="rating-btn rating-1 px-3 py-2 text-xs sm:text-sm font-semibold rounded-lg bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900/40 dark:text-red-300 transition-colors">
-                À revoir <span class="block text-[10px] opacity-70">(1)</span>
-              </button>
-              <button class="rating-btn rating-2 px-3 py-2 text-xs sm:text-sm font-semibold rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 transition-colors">
-                Difficile <span class="block text-[10px] opacity-70">(2)</span>
-              </button>
-              <button class="rating-btn rating-3 px-3 py-2 text-xs sm:text-sm font-semibold rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 transition-colors">
-                Correct <span class="block text-[10px] opacity-70">(3)</span>
-              </button>
-              <button class="rating-btn rating-4 px-3 py-2 text-xs sm:text-sm font-semibold rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 transition-colors">
-                Facile <span class="block text-[10px] opacity-70">(4)</span>
-              </button>
+              <div class="flex items-center justify-end space-x-2 mt-4 text-xs text-slate-500">
+                <span>Moins actif</span>
+                <div class="w-3 h-3 rounded-sm bg-slate-100 dark:bg-slate-700"></div>
+                <div class="w-3 h-3 rounded-sm bg-emerald-200 dark:bg-emerald-900/60"></div>
+                <div class="w-3 h-3 rounded-sm bg-emerald-400 dark:bg-emerald-700"></div>
+                <div class="w-3 h-3 rounded-sm bg-emerald-600 dark:bg-emerald-500"></div>
+                <span>Plus actif</span>
+              </div>
             </div>
-          </div>
-        </div>
 
-        <p class="text-xs text-center text-slate-400 mt-4">
-          Astuce : Utilisez la <kbd class="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-800 rounded">Barre d'espace</kbd> pour révéler puis passer à la carte suivante, et les flèches du clavier pour naviguer.
-        </p>
-      </div>
+            <!-- GRAPHIQUES INTERACTIFS (Chart.js) -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <!-- Graphique 1 : Distribution des Réponses -->
+              <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col">
+                <h4 class="font-bold text-sm text-slate-800 dark:text-slate-200 uppercase tracking-wider mb-4 text-center">
+                  📊 Répartition des Évaluations (SRS)
+                </h4>
+                <div class="w-full h-64 flex items-center justify-center">
+                  <canvas id="chart-ratings"></canvas>
+                </div>
+              </div>
 
-      <!-- VUE 2 : EXPLORATEUR DE CARTES -->
-      <div id="view-explorer" class="hidden flex-1 flex flex-col">
-        <div class="flex items-center justify-between mb-4">
-          <input type="text" id="search-input" placeholder="🔍 Rechercher dans les cartes ou les tags..." class="w-full max-w-md bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <span id="explorer-card-count" class="text-xs text-slate-500 font-medium"></span>
-        </div>
+              <!-- Graphique 2 : Activité Hebdomadaire -->
+              <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col">
+                <h4 class="font-bold text-sm text-slate-800 dark:text-slate-200 uppercase tracking-wider mb-4 text-center">
+                  📈 Révisions Quotidiennes (7 Derniers Jours)
+                </h4>
+                <div class="w-full h-64 flex items-center justify-center">
+                  <canvas id="chart-activity"></canvas>
+                </div>
+              </div>
+            </div>
 
-        <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-          <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse">
-              <thead>
-                <tr class="bg-slate-100 dark:bg-slate-750 text-slate-600 dark:text-slate-300 text-xs font-semibold uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
-                  <th class="py-3 px-4 w-12">#</th>
-                  <th class="py-3 px-4">Recto (Question)</th>
-                  <th class="py-3 px-4">Verso (Réponse)</th>
-                  <th class="py-3 px-4 w-32">Tags</th>
-                </tr>
-              </thead>
-              <tbody id="cards-table-body" class="divide-y divide-slate-200 dark:divide-slate-700">
+            <!-- Métriques Métier du Paquet -->
+            <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+              <h4 class="font-bold text-sm text-slate-800 dark:text-slate-200 uppercase tracking-wider mb-4">
+                📦 Composition du Paquet Actuel
+              </h4>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center mb-6">
+                <div class="p-3 bg-slate-50 dark:bg-slate-750 rounded-xl">
+                  <span class="text-xl font-bold text-blue-600 dark:text-blue-400" id="stat-deck-count">0</span>
+                  <p class="text-xs text-slate-500 mt-0.5">Paquet(s)</p>
+                </div>
+                <div class="p-3 bg-slate-50 dark:bg-slate-750 rounded-xl">
+                  <span class="text-xl font-bold text-indigo-600 dark:text-indigo-400" id="stat-card-count">0</span>
+                  <p class="text-xs text-slate-500 mt-0.5">Cartes</p>
+                </div>
+                <div class="p-3 bg-slate-50 dark:bg-slate-750 rounded-xl">
+                  <span class="text-xl font-bold text-purple-600 dark:text-purple-400" id="stat-note-count">0</span>
+                  <p class="text-xs text-slate-500 mt-0.5">Notes</p>
+                </div>
+                <div class="p-3 bg-slate-50 dark:bg-slate-750 rounded-xl">
+                  <span class="text-xl font-bold text-emerald-600 dark:text-emerald-400" id="stat-media-count">0</span>
+                  <p class="text-xs text-slate-500 mt-0.5">Fichiers Médias</p>
+                </div>
+              </div>
+
+              <h5 class="font-semibold text-xs text-slate-500 uppercase tracking-wider mb-2">Tags du paquet</h5>
+              <div id="stat-tags-container" class="flex flex-wrap gap-2">
                 <!-- Rendu dynamique -->
-              </tbody>
-            </table>
+              </div>
+            </div>
+
           </div>
+
         </div>
-      </div>
-
-      <!-- VUE 3 : STATISTIQUES & ANALYTICS -->
-      <div id="view-stats" class="hidden flex-1 flex flex-col max-w-4xl mx-auto w-full space-y-6">
-        
-        <!-- Cartes Gamification / Synthèse -->
-        <div>
-          <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
-            🏆 Tableau de Bord d'Apprentissage
-          </h3>
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
-              <div class="text-2xl mb-1">🔥</div>
-              <span class="text-2xl font-black text-amber-500" id="dash-streak">0 jour</span>
-              <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Série Actuelle</p>
-            </div>
-            <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
-              <div class="text-2xl mb-1">⚡</div>
-              <span class="text-2xl font-black text-purple-600 dark:text-purple-400" id="dash-xp">0 XP</span>
-              <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Total Expérience</p>
-            </div>
-            <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
-              <div class="text-2xl mb-1">⏱️</div>
-              <span class="text-2xl font-black text-blue-600 dark:text-blue-400" id="dash-avg-time">0.0s</span>
-              <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Temps Moyen / Carte</p>
-            </div>
-            <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
-              <div class="text-2xl mb-1">🎯</div>
-              <span class="text-2xl font-black text-emerald-600 dark:text-emerald-400" id="dash-accuracy">100%</span>
-              <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Taux de Précision</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- CALENDRIER DE RÉTENTION (HEATMAP) -->
-        <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
-          <div class="flex items-center justify-between mb-4">
-            <h4 class="font-bold text-sm text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
-              📅 Calendrier de Rétention & Assiduité (60 derniers jours)
-            </h4>
-            <span class="text-xs text-slate-500" id="heatmap-total-reviews">0 révision(s) au total</span>
-          </div>
-          
-          <div id="retention-heatmap" class="grid grid-cols-10 sm:grid-cols-15 md:grid-cols-20 gap-1.5 justify-center py-2">
-            <!-- Cases générées dynamiquement en JS -->
-          </div>
-
-          <div class="flex items-center justify-end space-x-2 mt-4 text-xs text-slate-500">
-            <span>Moins actif</span>
-            <div class="w-3 h-3 rounded-sm bg-slate-100 dark:bg-slate-700"></div>
-            <div class="w-3 h-3 rounded-sm bg-emerald-200 dark:bg-emerald-900/60"></div>
-            <div class="w-3 h-3 rounded-sm bg-emerald-400 dark:bg-emerald-700"></div>
-            <div class="w-3 h-3 rounded-sm bg-emerald-600 dark:bg-emerald-500"></div>
-            <span>Plus actif</span>
-          </div>
-        </div>
-
-        <!-- GRAPHIQUES INTERACTIFS (Chart.js) -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <!-- Graphique 1 : Distribution des Réponses -->
-          <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col">
-            <h4 class="font-bold text-sm text-slate-800 dark:text-slate-200 uppercase tracking-wider mb-4 text-center">
-              📊 Répartition des Évaluations (SRS)
-            </h4>
-            <div class="w-full h-64 flex items-center justify-center">
-              <canvas id="chart-ratings"></canvas>
-            </div>
-          </div>
-
-          <!-- Graphique 2 : Activité Hebdomadaire -->
-          <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col">
-            <h4 class="font-bold text-sm text-slate-800 dark:text-slate-200 uppercase tracking-wider mb-4 text-center">
-              📈 Révisions Quotidiennes (7 Derniers Jours)
-            </h4>
-            <div class="w-full h-64 flex items-center justify-center">
-              <canvas id="chart-activity"></canvas>
-            </div>
-          </div>
-        </div>
-
-        <!-- Métriques Métier du Paquet -->
-        <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
-          <h4 class="font-bold text-sm text-slate-800 dark:text-slate-200 uppercase tracking-wider mb-4">
-            📦 Composition du Paquet Actuel
-          </h4>
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center mb-6">
-            <div class="p-3 bg-slate-50 dark:bg-slate-750 rounded-xl">
-              <span class="text-xl font-bold text-blue-600 dark:text-blue-400" id="stat-deck-count">0</span>
-              <p class="text-xs text-slate-500 mt-0.5">Paquet(s)</p>
-            </div>
-            <div class="p-3 bg-slate-50 dark:bg-slate-750 rounded-xl">
-              <span class="text-xl font-bold text-indigo-600 dark:text-indigo-400" id="stat-card-count">0</span>
-              <p class="text-xs text-slate-500 mt-0.5">Cartes</p>
-            </div>
-            <div class="p-3 bg-slate-50 dark:bg-slate-750 rounded-xl">
-              <span class="text-xl font-bold text-purple-600 dark:text-purple-400" id="stat-note-count">0</span>
-              <p class="text-xs text-slate-500 mt-0.5">Notes</p>
-            </div>
-            <div class="p-3 bg-slate-50 dark:bg-slate-750 rounded-xl">
-              <span class="text-xl font-bold text-emerald-600 dark:text-emerald-400" id="stat-media-count">0</span>
-              <p class="text-xs text-slate-500 mt-0.5">Fichiers Médias</p>
-            </div>
-          </div>
-
-          <h5 class="font-semibold text-xs text-slate-500 uppercase tracking-wider mb-2">Tags du paquet</h5>
-          <div id="stat-tags-container" class="flex flex-wrap gap-2">
-            <!-- Rendu dynamique -->
-          </div>
-        </div>
-
       </div>
 
     </section>
@@ -385,7 +437,7 @@
 
   <!-- Pied de page -->
   <footer class="border-t border-slate-200 dark:border-slate-800 py-4 text-center text-xs text-slate-400">
-    Lecteur Anki Web • Conçu avec JSZip, sql.js (WebAssembly), Chart.js & Tailwind CSS
+    Lecteur Anki Web Anatole • Conçu avec IndexedDB, JSZip, sql.js (WebAssembly) & Tailwind CSS
   </footer>
 
   <!-- Scripts d'application -->

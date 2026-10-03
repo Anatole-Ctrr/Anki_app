@@ -191,3 +191,50 @@ mjx-container[jax="CHTML"][display="true"] {
   text-align: left;
   margin: 0.5rem 0;
 }
+
+/* --- STYLES ARBORESCENCE (+/-) & BOUTON ÉTOILE ⭐ --- */
+
+/* Étoile Quizlet active */
+.star-active {
+  color: #f59e0b !important;
+  transform: scale(1.15);
+  filter: drop-shadow(0 2px 4px rgba(245, 158, 11, 0.4));
+}
+
+/* Boutons de bascule + / - d'arborescence */
+.tree-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1;
+  background-color: rgba(148, 163, 184, 0.15);
+  color: #64748b;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.tree-toggle-btn:hover {
+  background-color: #3b82f6;
+  color: #ffffff;
+}
+
+/* Nœud sélectionné dans l'arbre */
+.tree-node-selected {
+  background-color: rgba(59, 130, 246, 0.12) !important;
+  border-left: 3px solid #3b82f6 !important;
+  font-weight: 600 !important;
+  color: #2563eb !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tree-node-selected {
+    background-color: rgba(59, 130, 246, 0.25) !important;
+    color: #60a5fa !important;
+  }
+}

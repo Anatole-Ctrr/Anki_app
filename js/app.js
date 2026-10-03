@@ -1,6 +1,7 @@
 /**
  * Contrôleur de l'application Web Anki.
  * Gère l'interface utilisateur, la navigation, les raccourcis clavier,
+ * la bibliothèque IndexedDB, l'arborescence (+/-), le marquage ⭐ (Quizlet Mode),
  * le chronomètre, les statistiques avancées et la ludification (gamification).
  */
 
@@ -89,9 +90,10 @@ class StatsTracker {
   }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   const parser = new AnkiParser();
   const statsTracker = new StatsTracker();
+  const libraryStore = new LibraryStore();
 
   // Éléments DOM principaux
   const dropZone = document.getElementById("drop-zone");
@@ -115,9 +117,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const viewExplorer = document.getElementById("view-explorer");
   const viewStats = document.getElementById("view-stats");
 
-  // Sélecteur de paquet
-  const deckSelect = document.getElementById("deck-select");
+  // Paquets & Arborescence
   const currentDeckNameEl = document.getElementById("current-deck-name");
+  const deckTreeContainer = document.getElementById("deck-tree-container");
+  const treeTotalCardsEl = document.getElementById("tree-total-cards");
+  const clearLibraryBtn = document.getElementById("clear-library-btn");
 
   // Mode Révision & Chronomètre
   const cardContainer = document.getElementById("card-container");
@@ -133,6 +137,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const shuffleBtn = document.getElementById("shuffle-btn");
   const cardTagsEl = document.getElementById("card-tags");
   const cardTimerEl = document.getElementById("card-timer");
+  const starCardBtn = document.getElementById("star-card-btn");
+  const filterStarredBtn = document.getElementById("filter-starred-btn");
+  const starredCountBadge = document.getElementById("starred-count-badge");
 
   // Dashboard Stats Elements
   const dashStreak = document.getElementById("dash-streak");
@@ -153,7 +160,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const statTagsContainer = document.getElementById("stat-tags-container");
 
   // État de l'application
-  let currentDeck = null;
+  let currentDeckNode = null;
   let currentCards = [];
   let currentIndex = 0;
   let isAnswerShown = false;
@@ -168,8 +175,152 @@ document.addEventListener("DOMContentLoaded", () => {
   let chartRatingsInstance = null;
   let chartActivityInstance = null;
 
-  // Initialisation de la Gamification au lancement
+  // --- Marquage Étoile ⭐ (Quizlet Mode) ---
+  const STARRED_KEY = "anki_starred_cards_v1";
+  let starredCardIds = new Set(JSON.parse(localStorage.getItem(STARRED_KEY) || "[]"));
+  let isStarredOnlyMode = false;
+
+  function saveStarredCards() {
+    localStorage.setItem(STARRED_KEY, JSON.stringify(Array.from(starredCardIds)));
+    updateStarredBadge();
+  }
+
+  function toggleStarCard(cardId) {
+    if (!cardId) return;
+    if (starredCardIds.has(cardId)) {
+      starredCardIds.delete(cardId);
+      showStatus("Étoile retirée de la carte");
+    } else {
+      starredCardIds.add(cardId);
+      showStatus("Carte marquée d'une étoile ⭐ !");
+    }
+    saveStarredCards();
+    updateStarUI();
+    renderExplorerTable();
+  }
+
+  function updateStarredBadge() {
+    if (starredCountBadge) starredCountBadge.textContent = starredCardIds.size;
+  }
+
+  function updateStarUI() {
+    if (!starCardBtn) return;
+    if (currentCards.length === 0) {
+      starCardBtn.classList.remove("star-active");
+      return;
+    }
+    const card = currentCards[currentIndex];
+    if (card && starredCardIds.has(card.id)) {
+      starCardBtn.classList.add("star-active");
+    } else {
+      starCardBtn.classList.remove("star-active");
+    }
+  }
+
+  if (starCardBtn) {
+    starCardBtn.addEventListener("click", () => {
+      if (currentCards.length > 0) {
+        toggleStarCard(currentCards[currentIndex].id);
+      }
+    });
+  }
+
+  if (filterStarredBtn) {
+    filterStarredBtn.addEventListener("click", () => {
+      isStarredOnlyMode = !isStarredOnlyMode;
+      filterStarredBtn.classList.toggle("bg-amber-500", isStarredOnlyMode);
+      filterStarredBtn.classList.toggle("text-white", isStarredOnlyMode);
+
+      if (isStarredOnlyMode) {
+        showStatus("Mode Quizlet activé : Révision des cartes marquées ⭐ uniquement.");
+      } else {
+        showStatus("Mode normal rétabli.");
+      }
+
+      if (currentDeckNode) {
+        selectDeckByNode(currentDeckNode);
+      } else if (parser.decks.size > 0) {
+        const rootNodes = buildTreeFromDecks(Array.from(parser.decks.values()));
+        if (rootNodes.length > 0) selectDeckByNode(rootNodes[0]);
+      }
+    });
+  }
+
+  updateStarredBadge();
   updateHeaderGamification();
+
+  // --- Chargement de la bibliothèque IndexedDB au démarrage ---
+  await loadLibraryFromStorage();
+
+  async function loadLibraryFromStorage() {
+    try {
+      const savedPackages = await libraryStore.getAllPackages();
+      renderSavedPackagesList(savedPackages);
+      if (savedPackages.length > 0) {
+        const latest = savedPackages.sort((a, b) => b.timestamp - a.timestamp)[0];
+        showStatus(`Chargement de '${latest.name}' depuis votre bibliothèque...`);
+        await parser.loadApkg(latest.buffer);
+        populateDecksAndTree(Array.from(parser.decks.values()));
+        updateGlobalStats({
+          decks: Array.from(parser.decks.values()),
+          totalNotes: parser.notes.size,
+          totalCards: parser.cards.length,
+          totalMedia: parser.mediaMap.size,
+        });
+        uploadSection.classList.add("hidden");
+        mainAppSection.classList.remove("hidden");
+      }
+    } catch (e) {
+      console.warn("Impossible de charger la bibliothèque IndexedDB :", e);
+    }
+  }
+
+  function renderSavedPackagesList(packages) {
+    const container = document.getElementById("saved-packages-list");
+    const countBadge = document.getElementById("library-count-badge");
+    if (countBadge) countBadge.textContent = packages.length;
+    if (!container) return;
+
+    container.innerHTML = "";
+    if (packages.length === 0) {
+      container.innerHTML = "<span class='text-slate-400 italic'>Aucun paquet sauvegardé</span>";
+      return;
+    }
+
+    packages.forEach((pkg) => {
+      const div = document.createElement("div");
+      div.className = "flex items-center justify-between py-1 px-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700/50 group cursor-pointer transition-colors";
+      div.innerHTML = `
+        <span class="truncate max-w-[130px] text-slate-700 dark:text-slate-300 font-medium" title="${pkg.name}">${pkg.name}</span>
+        <button class="delete-pkg-btn text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-0.5" title="Supprimer de la bibliothèque">🗑️</button>
+      `;
+
+      div.addEventListener("click", async (e) => {
+        if (e.target.classList.contains("delete-pkg-btn")) {
+          e.stopPropagation();
+          await libraryStore.deletePackage(pkg.id);
+          const updated = await libraryStore.getAllPackages();
+          renderSavedPackagesList(updated);
+          showStatus(`Paquet '${pkg.name}' supprimé.`);
+          return;
+        }
+        await parser.loadApkg(pkg.buffer);
+        populateDecksAndTree(Array.from(parser.decks.values()));
+      });
+
+      container.appendChild(div);
+    });
+  }
+
+  if (clearLibraryBtn) {
+    clearLibraryBtn.addEventListener("click", async () => {
+      if (confirm("Voulez-vous vider tous les paquets enregistrés dans votre bibliothèque ?")) {
+        await libraryStore.clearAll();
+        renderSavedPackagesList([]);
+        showStatus("Bibliothèque vidée.");
+      }
+    });
+  }
 
   function updateHeaderGamification() {
     if (!userStreakEl) return;
@@ -202,7 +353,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // --- Gestion des notifications Toast ---
+  // --- Notifications Toast ---
   function showStatus(message, isError = false) {
     statusToast.textContent = message;
     statusToast.className = `fixed bottom-6 right-6 px-5 py-3 rounded-xl shadow-2xl text-sm font-medium z-50 transition-all duration-300 transform translate-y-0 ${
@@ -220,16 +371,23 @@ document.addEventListener("DOMContentLoaded", () => {
   async function handleFile(file) {
     if (!file) return;
     try {
-      showStatus("Analyse du fichier en cours...");
-      const result = await parser.loadApkg(file, (msg) => showStatus(msg));
+      showStatus("Analyse et enregistrement du paquet...");
+      const arrayBuffer = await file.arrayBuffer();
 
-      populateDecks(result.decks);
+      // Sauvegarde dans IndexedDB (Session Anatole)
+      await libraryStore.savePackage(file.name, file.name, arrayBuffer);
+      const savedPackages = await libraryStore.getAllPackages();
+      renderSavedPackagesList(savedPackages);
+
+      const result = await parser.loadApkg(arrayBuffer, (msg) => showStatus(msg));
+
+      populateDecksAndTree(result.decks);
       updateGlobalStats(result);
       switchTab("study");
 
       uploadSection.classList.add("hidden");
       mainAppSection.classList.remove("hidden");
-      showStatus(`Paquet chargé avec succès ! (${result.totalCards} cartes)`);
+      showStatus(`Paquet '${file.name}' enregistré et chargé ! (${result.totalCards} cartes)`);
     } catch (err) {
       console.error(err);
       showStatus(`Erreur : ${err.message}`, true);
@@ -252,7 +410,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   dropZone.addEventListener("drop", (e) => {
-    const file = e.target.files[0];
+    const file = e.dataTransfer.files[0];
     if (file) handleFile(file);
   });
 
@@ -268,50 +426,175 @@ document.addEventListener("DOMContentLoaded", () => {
       const response = await fetch("demo_deck.apkg");
       if (!response.ok) throw new Error("Fichier demo_deck.apkg introuvable sur le serveur.");
       const blob = await response.blob();
-      await handleFile(blob);
+      const arrayBuffer = await blob.arrayBuffer();
+
+      await libraryStore.savePackage("demo_deck.apkg", "Démo - Web & Python", arrayBuffer);
+      const savedPackages = await libraryStore.getAllPackages();
+      renderSavedPackagesList(savedPackages);
+
+      const result = await parser.loadApkg(arrayBuffer);
+      populateDecksAndTree(result.decks);
+      updateGlobalStats(result);
+      switchTab("study");
+
+      uploadSection.classList.add("hidden");
+      mainAppSection.classList.remove("hidden");
+      showStatus("Paquet démo chargé et enregistré dans votre bibliothèque !");
     } catch (err) {
       showStatus(`Impossible de charger le paquet démo : ${err.message}`, true);
     }
   });
 
-  // Nouveau paquet (recharger un autre fichier)
   document.getElementById("btn-new-deck").addEventListener("click", () => {
     fileInput.value = "";
     uploadSection.classList.remove("hidden");
     mainAppSection.classList.add("hidden");
   });
 
-  // --- Gestion des Decks ---
-  function populateDecks(decks) {
-    deckSelect.innerHTML = "";
-    const activeDecks = decks.filter((d) => d.cards.length > 0);
-    const decksToUse = activeDecks.length > 0 ? activeDecks : decks;
+  // --- Gestion des Decks & Arborescence (+/-) ---
+  function populateDecksAndTree(decks) {
+    const rootNodes = buildTreeFromDecks(decks);
+    renderDeckTree(rootNodes, deckTreeContainer);
 
-    decksToUse.forEach((deck) => {
-      const opt = document.createElement("option");
-      opt.value = deck.id;
-      opt.textContent = `${deck.name} (${deck.cards.length} cartes)`;
-      deckSelect.appendChild(opt);
-    });
+    if (treeTotalCardsEl) {
+      treeTotalCardsEl.textContent = `${parser.cards.length} cartes au total`;
+    }
 
-    if (decksToUse.length > 0) {
-      selectDeck(decksToUse[0].id);
+    if (rootNodes.length > 0) {
+      selectDeckByNode(rootNodes[0]);
     }
   }
 
-  deckSelect.addEventListener("change", (e) => {
-    selectDeck(Number(e.target.value));
-  });
+  function buildTreeFromDecks(decks) {
+    const rootNodes = [];
+    const nodeMap = new Map();
 
-  function selectDeck(deckId) {
-    currentDeck = parser.decks.get(deckId);
-    if (!currentDeck) return;
+    const activeDecks = decks.filter((d) => d.cards.length > 0 || d.name !== "Default");
+    const listToProcess = activeDecks.length > 0 ? activeDecks : decks;
 
-    currentDeckNameEl.textContent = currentDeck.name;
-    currentCards = [...currentDeck.cards];
+    listToProcess.forEach((deck) => {
+      const parts = deck.name.split("::");
+      let currentPath = "";
+
+      parts.forEach((part, idx) => {
+        const parentPath = currentPath;
+        currentPath = currentPath ? `${currentPath}::${part}` : part;
+
+        if (!nodeMap.has(currentPath)) {
+          const newNode = {
+            path: currentPath,
+            name: part,
+            deckId: idx === parts.length - 1 ? deck.id : null,
+            cards: [],
+            children: [],
+            isExpanded: true,
+          };
+          nodeMap.set(currentPath, newNode);
+
+          if (parentPath && nodeMap.has(parentPath)) {
+            nodeMap.get(parentPath).children.push(newNode);
+          } else {
+            rootNodes.push(newNode);
+          }
+        }
+
+        if (idx === parts.length - 1) {
+          nodeMap.get(currentPath).cards = deck.cards;
+          nodeMap.get(currentPath).deckId = deck.id;
+        }
+      });
+    });
+
+    return rootNodes;
+  }
+
+  function renderDeckTree(treeNodes, containerEl) {
+    if (!containerEl) return;
+    containerEl.innerHTML = "";
+    if (treeNodes.length === 0) {
+      containerEl.innerHTML = "<span class='text-slate-400 text-xs italic'>Aucun paquet trouvé</span>";
+      return;
+    }
+
+    function createTreeNodeHTML(node) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "tree-node-wrapper space-y-0.5";
+
+      const subCards = getAllCardsInSubtree(node);
+      const totalCardsInSubtree = subCards.length;
+      const hasChildren = node.children.length > 0;
+      const isSelected = currentDeckNode && currentDeckNode.path === node.path;
+
+      const itemDiv = document.createElement("div");
+      itemDiv.className = `tree-item flex items-center justify-between px-2 py-1.5 rounded-lg text-xs cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-750 transition-colors ${
+        isSelected ? "tree-node-selected" : ""
+      }`;
+
+      itemDiv.innerHTML = `
+        <div class="flex items-center space-x-1.5 truncate">
+          ${
+            hasChildren
+              ? `<span class="tree-toggle-btn">${node.isExpanded ? "−" : "+"}</span>`
+              : `<span class="text-slate-400 font-mono text-[10px]">•</span>`
+          }
+          <span class="font-medium text-slate-800 dark:text-slate-200 truncate">${node.name}</span>
+        </div>
+        <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold">${totalCardsInSubtree}</span>
+      `;
+
+      itemDiv.addEventListener("click", (e) => {
+        if (e.target.classList.contains("tree-toggle-btn")) {
+          e.stopPropagation();
+          node.isExpanded = !node.isExpanded;
+          renderDeckTree(treeNodes, containerEl);
+          return;
+        }
+        selectDeckByNode(node);
+      });
+
+      wrapper.appendChild(itemDiv);
+
+      if (hasChildren && node.isExpanded) {
+        const childrenContainer = document.createElement("div");
+        childrenContainer.className = "tree-children pl-3 space-y-0.5 border-l border-slate-200 dark:border-slate-700 ml-2 mt-0.5";
+        node.children.forEach((child) => {
+          childrenContainer.appendChild(createTreeNodeHTML(child));
+        });
+        wrapper.appendChild(childrenContainer);
+      }
+
+      return wrapper;
+    }
+
+    treeNodes.forEach((rootNode) => {
+      containerEl.appendChild(createTreeNodeHTML(rootNode));
+    });
+  }
+
+  function getAllCardsInSubtree(node) {
+    let cards = [...node.cards];
+    node.children.forEach((child) => {
+      cards = cards.concat(getAllCardsInSubtree(child));
+    });
+    return cards;
+  }
+
+  function selectDeckByNode(node) {
+    currentDeckNode = node;
+    const subCards = getAllCardsInSubtree(node);
+    currentDeckNameEl.textContent = node.path;
+
+    currentCards = isStarredOnlyMode
+      ? subCards.filter((c) => starredCardIds.has(c.id))
+      : subCards;
+
     currentIndex = 0;
     renderCurrentCard();
     renderExplorerTable();
+    updateStarUI();
+
+    const rootNodes = buildTreeFromDecks(Array.from(parser.decks.values()));
+    renderDeckTree(rootNodes, deckTreeContainer);
   }
 
   // Mélanger les cartes
@@ -333,35 +616,33 @@ document.addEventListener("DOMContentLoaded", () => {
     showAnswerBtn.classList.remove("hidden");
 
     if (currentCards.length === 0) {
-      cardFrontEl.innerHTML = `<p class="text-gray-400 italic py-8">Aucune carte dans ce paquet.</p>`;
+      const msg = isStarredOnlyMode ? "Aucune carte marquée ⭐ dans ce paquet." : "Aucune carte dans ce paquet.";
+      cardFrontEl.innerHTML = `<p class="text-gray-400 italic py-8">${msg}</p>`;
       cardCounterEl.textContent = "0 / 0";
       cardProgressBar.style.width = "0%";
       cardTagsEl.innerHTML = "";
       stopCardTimer();
+      updateStarUI();
       return;
     }
 
     const card = currentCards[currentIndex];
     const rendered = parser.renderCard(card);
 
-    // Injection du CSS spécifique du modèle de carte
     if (!styleElement) {
       styleElement = document.createElement("style");
       document.head.appendChild(styleElement);
     }
     styleElement.textContent = rendered.css;
 
-    // Rendu du recto
     cardFrontEl.innerHTML = rendered.front || "<span class='italic text-gray-400'>[Recto vide]</span>";
     cardBackEl.innerHTML = rendered.back || "<span class='italic text-gray-400'>[Verso vide]</span>";
 
-    // Mise à jour de la pagination
     const currentNumber = currentIndex + 1;
     const total = currentCards.length;
     cardCounterEl.textContent = `${currentNumber} / ${total}`;
     cardProgressBar.style.width = `${(currentNumber / total) * 100}%`;
 
-    // Tags
     cardTagsEl.innerHTML = "";
     if (card.note && card.note.tags.length > 0) {
       card.note.tags.forEach((tag) => {
@@ -372,24 +653,20 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // Démarrage du chronomètre pour cette carte
     startCardTimer();
     cardContainer.scrollTop = 0;
-
-    // Rendu des formules mathématiques MathJax/LaTeX
+    updateStarUI();
     triggerMathJax();
   }
 
   function showAnswer() {
     if (isAnswerShown) return;
     isAnswerShown = true;
-    stopCardTimer(); // Arrêt du chrono au dévoilement
+    stopCardTimer();
 
     cardAnswerSection.classList.remove("hidden");
     showAnswerBtn.classList.add("hidden");
     ratingButtonsSection.classList.remove("hidden");
-
-    // Rendu des formules mathématiques au verso
     triggerMathJax();
   }
 
@@ -406,7 +683,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const res = statsTracker.recordReview(rating, currentCardResponseTime);
     updateHeaderGamification();
 
-    // Effet visuel pop sur le badge XP
     if (userXpEl) {
       userXpEl.classList.add("xp-pop");
       setTimeout(() => userXpEl.classList.remove("xp-pop"), 400);
@@ -436,13 +712,12 @@ document.addEventListener("DOMContentLoaded", () => {
   prevCardBtn.addEventListener("click", prevCard);
   nextCardBtn.addEventListener("click", nextCard);
 
-  // Évaluation SRS (Boutons 1 à 4)
   document.querySelector(".rating-1")?.addEventListener("click", () => handleRating(1));
   document.querySelector(".rating-2")?.addEventListener("click", () => handleRating(2));
   document.querySelector(".rating-3")?.addEventListener("click", () => handleRating(3));
   document.querySelector(".rating-4")?.addEventListener("click", () => handleRating(4));
 
-  // --- Raccourcis clavier ergonomiques ---
+  // --- Raccourcis Clavier Ergonomiques ---
   window.addEventListener("keydown", (e) => {
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
     if (mainAppSection.classList.contains("hidden")) return;
@@ -450,15 +725,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (e.code === "Space") {
       e.preventDefault();
-      if (!isAnswerShown) {
-        showAnswer();
-      } else {
-        nextCard();
-      }
+      if (!isAnswerShown) showAnswer();
+      else nextCard();
     } else if (e.code === "ArrowRight") {
       nextCard();
     } else if (e.code === "ArrowLeft") {
       prevCard();
+    } else if (e.key === "*" || e.code === "KeyS") {
+      if (currentCards.length > 0) toggleStarCard(currentCards[currentIndex].id);
     } else if (isAnswerShown) {
       if (e.code === "Digit1") handleRating(1);
       else if (e.code === "Digit2") handleRating(2);
@@ -489,15 +763,22 @@ document.addEventListener("DOMContentLoaded", () => {
       const frontClean = stripHtml(rendered.front);
       const backClean = stripHtml(rendered.back);
       const tagsStr = (card.note?.tags || []).join(", ") || "-";
+      const isStarred = starredCardIds.has(card.id);
 
       tr.innerHTML = `
-        <td class="py-3 px-4 text-xs font-mono text-slate-400">${idx + 1}</td>
+        <td class="py-3 px-3 text-center text-sm star-cell">${isStarred ? "⭐" : "☆"}</td>
+        <td class="py-3 px-3 text-xs font-mono text-slate-400">${idx + 1}</td>
         <td class="py-3 px-4 text-sm font-medium text-slate-800 dark:text-slate-200 max-w-xs truncate">${frontClean}</td>
         <td class="py-3 px-4 text-sm text-slate-600 dark:text-slate-400 max-w-xs truncate">${backClean}</td>
         <td class="py-3 px-4 text-xs text-slate-500">${tagsStr}</td>
       `;
 
-      tr.addEventListener("click", () => {
+      tr.addEventListener("click", (e) => {
+        if (e.target.classList.contains("star-cell")) {
+          e.stopPropagation();
+          toggleStarCard(card.id);
+          return;
+        }
         const foundIdx = currentCards.findIndex((c) => c.id === card.id);
         if (foundIdx !== -1) {
           currentIndex = foundIdx;
@@ -546,16 +827,12 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function renderAnalyticsDashboard() {
-    // 1. Dashboard métriques
     if (dashStreak) dashStreak.textContent = `${statsTracker.data.streak} jour(s)`;
     if (dashXp) dashXp.textContent = `${statsTracker.data.xp} XP`;
     if (dashAvgTime) dashAvgTime.textContent = `${statsTracker.getAverageResponseTime()}s`;
     if (dashAccuracy) dashAccuracy.textContent = `${statsTracker.getAccuracyRate()}%`;
 
-    // 2. Heatmap de rétention
     renderHeatmap();
-
-    // 3. Graphiques Chart.js
     renderCharts();
   }
 
@@ -592,7 +869,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function renderCharts() {
-    // Chart 1: Ratings Doughnut
     const ctxRatings = document.getElementById("chart-ratings");
     if (ctxRatings && typeof Chart !== "undefined") {
       if (chartRatingsInstance) chartRatingsInstance.destroy();
@@ -618,7 +894,6 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // Chart 2: Daily Activity Bar
     const ctxActivity = document.getElementById("chart-activity");
     if (ctxActivity && typeof Chart !== "undefined") {
       if (chartActivityInstance) chartActivityInstance.destroy();

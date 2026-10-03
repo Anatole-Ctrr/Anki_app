@@ -74,6 +74,9 @@ def create_sample_deck(output_path: str = "demo_deck.apkg"):
 
     # 2. Paquets (Decks)
     deck_id = 1600000002000
+    subdeck_1_id = 1600000002001
+    subdeck_2_id = 1600000002002
+
     decks = {
         "1": {"id": 1, "name": "Default", "mod": now, "usn": 0, "desc": "", "collapsed": False},
         str(deck_id): {
@@ -81,7 +84,23 @@ def create_sample_deck(output_path: str = "demo_deck.apkg"):
             "name": "Développement Web & Python",
             "mod": now,
             "usn": -1,
-            "desc": "Paquet de démonstration pour tester l'application Web Anki.",
+            "desc": "Paquet racine",
+            "collapsed": False,
+        },
+        str(subdeck_1_id): {
+            "id": subdeck_1_id,
+            "name": "Développement Web & Python::Anki & SQLite",
+            "mod": now,
+            "usn": -1,
+            "desc": "Sous-paquet SQLite Anki",
+            "collapsed": False,
+        },
+        str(subdeck_2_id): {
+            "id": subdeck_2_id,
+            "name": "Développement Web & Python::Python Asynchrone",
+            "mod": now,
+            "usn": -1,
+            "desc": "Sous-paquet Python Async",
             "collapsed": False,
         },
     }
