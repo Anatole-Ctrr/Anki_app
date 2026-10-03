@@ -236,26 +236,37 @@ document.addEventListener("DOMContentLoaded", async () => {
   updateHeaderGamification();
 
   // --- Chargement de la bibliothèque IndexedDB au démarrage ---
-  await loadLibraryFromStorage();
+  await reloadAllLibraryPackages();
 
-  async function loadLibraryFromStorage() {
+  async function reloadAllLibraryPackages() {
     try {
       const savedPackages = await libraryStore.getAllPackages();
       renderSavedPackagesList(savedPackages);
-      if (savedPackages.length > 0) {
-        const latest = savedPackages.sort((a, b) => b.timestamp - a.timestamp)[0];
-        showStatus(`Chargement de '${latest.name}' depuis votre bibliothèque...`);
-        await parser.loadApkg(latest.buffer);
-        populateDecksAndTree(Array.from(parser.decks.values()));
-        updateGlobalStats({
-          decks: Array.from(parser.decks.values()),
-          totalNotes: parser.notes.size,
-          totalCards: parser.cards.length,
-          totalMedia: parser.mediaMap.size,
-        });
-        uploadSection.classList.add("hidden");
-        mainAppSection.classList.remove("hidden");
+      if (savedPackages.length === 0) return;
+
+      showStatus(`Chargement de ${savedPackages.length} paquet(s) de votre bibliothèque...`);
+      parser.reset();
+
+      for (let i = 0; i < savedPackages.length; i++) {
+        const pkg = savedPackages[i];
+        try {
+          await parser.loadApkg(pkg.buffer, () => {}, i === 0);
+        } catch (pkgErr) {
+          console.warn(`Impossible de charger le paquet '${pkg.name}' :`, pkgErr);
+        }
       }
+
+      populateDecksAndTree(Array.from(parser.decks.values()));
+      updateGlobalStats({
+        decks: Array.from(parser.decks.values()),
+        totalNotes: parser.notes.size,
+        totalCards: parser.cards.length,
+        totalMedia: parser.mediaMap.size,
+      });
+
+      uploadSection.classList.add("hidden");
+      mainAppSection.classList.remove("hidden");
+      showStatus(`Bibliothèque chargée ! (${savedPackages.length} paquet(s), ${parser.cards.length} cartes au total)`);
     } catch (e) {
       console.warn("Impossible de charger la bibliothèque IndexedDB :", e);
     }
@@ -285,9 +296,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (e.target.classList.contains("delete-pkg-btn")) {
           e.stopPropagation();
           await libraryStore.deletePackage(pkg.id);
-          const updated = await libraryStore.getAllPackages();
-          renderSavedPackagesList(updated);
           showStatus(`Paquet '${pkg.name}' supprimé.`);
+          await reloadAllLibraryPackages();
           return;
         }
         await parser.loadApkg(pkg.buffer);
@@ -302,7 +312,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     clearLibraryBtn.addEventListener("click", async () => {
       if (confirm("Voulez-vous vider tous les paquets enregistrés dans votre bibliothèque ?")) {
         await libraryStore.clearAll();
+        parser.reset();
         renderSavedPackagesList([]);
+        populateDecksAndTree([]);
         showStatus("Bibliothèque vidée.");
       }
     });
@@ -363,29 +375,19 @@ document.addEventListener("DOMContentLoaded", async () => {
         showStatus(`Analyse et enregistrement de '${file.name}'...`);
         const arrayBuffer = await file.arrayBuffer();
 
-        // Sauvegarde dans IndexedDB (Session Anatole) avec tolérance de quota
+        // Sauvegarde dans IndexedDB (Session Anatole)
         try {
           await libraryStore.savePackage(file.name, file.name, arrayBuffer);
-          const savedPackages = await libraryStore.getAllPackages();
-          renderSavedPackagesList(savedPackages);
         } catch (storageErr) {
           console.warn("Sauvegarde IndexedDB ignorée :", storageErr);
         }
-
-        const result = await parser.loadApkg(arrayBuffer, (msg) => showStatus(msg));
-
-        populateDecksAndTree(result.decks);
-        updateGlobalStats(result);
-        switchTab("study");
-
-        uploadSection.classList.add("hidden");
-        mainAppSection.classList.remove("hidden");
-        showStatus(`Paquet '${file.name}' chargé avec succès ! (${result.totalCards} cartes)`);
       } catch (err) {
         console.error(err);
         showStatus(`Erreur avec '${file.name}' : ${err.message}`, true);
       }
     }
+
+    await reloadAllLibraryPackages();
   }
 
   // Clic direct n'importe où dans la zone de drag & drop
