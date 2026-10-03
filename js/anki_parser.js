@@ -300,11 +300,17 @@ class AnkiParser {
     result = result.replace(/<script[\s\S]*?<\/script>/gi, "");
     result = result.replace(/<style[\s\S]*?<\/style>/gi, "");
 
-    // 2. Dé-masquage des éléments masqués par attributs 'hidden' ou 'display:none' des templates Anki
-    result = result.replace(/\bhidden(=["']*(hidden|true|1|["'])*)?/gi, "");
+    // 2. Nettoyage des widgets UI et conteneurs de données réservés aux scripts Anki Desktop
+    result = result.replace(/<div[^>]*class=["']slidecontainer["'][^>]*>[\s\S]*?<\/div>/gi, "");
+    result = result.replace(/<input[^>]*type=["']range["'][^>]*>/gi, "");
+    result = result.replace(/<div[^>]*id=["'](cloze-original|the_answer|replace|subject-clozes|cloze-is-back)["'][^>]*>[\s\S]*?<\/div>/gi, "");
+    result = result.replace(/<span[^>]*id=["']showAllClozesButton["'][^>]*>[\s\S]*?<\/span>/gi, "");
+
+    // 3. Dé-masquage des éléments masqués par attributs 'hidden' ou 'display:none' des templates Anki
+    result = result.replace(/\bhidden(=["']*(hidden|true|1)?["']*)?/gi, "");
     result = result.replace(/display:\s*none;?/gi, "");
 
-    // 3. Normalisation des balises LaTeX Anki spécifiques vers les délimiteurs TeX standard
+    // 4. Normalisation des balises LaTeX Anki spécifiques vers les délimiteurs TeX standard
     result = result.replace(/\[math\]([\s\S]*?)\[\/math\]/gi, "\\($1\\)");
     result = result.replace(/\[\$\$?\]([\s\S]*?)\[\/\$\$?\]/gi, (match) => {
       if (match.startsWith("[$$]")) return "\\[" + match.slice(4, -5) + "\\]";
@@ -312,7 +318,7 @@ class AnkiParser {
     });
     result = result.replace(/\[eq\]([\s\S]*?)\[\/eq\]/gi, "\\[$1\\]");
 
-    // 4. Traitement Markdown via Marked.js uniquement sur le contenu sans balises HTML lourdes
+    // 5. Traitement Markdown via Marked.js uniquement sur le contenu sans balises HTML lourdes
     const markedObj = window.marked || (typeof marked !== "undefined" ? marked : null);
     if (markedObj && typeof markedObj.parse === "function") {
       const hasCodeBlocks = /```[\s\S]*?```/.test(result);
@@ -339,21 +345,25 @@ class AnkiParser {
       output = output.replace(/\{\{FrontSide\}\}/g, frontClean);
     }
 
-    // 1. Conditionnels positifs {{#Field}}...{{/Field}}
-    output = output.replace(/\{\{#([^}]+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (match, fieldName, content) => {
-      const val = (fields[fieldName.trim()] || "").trim();
-      return val ? content : "";
-    });
+    // 1 & 2. Traitement récursif des conditionnels Mustache (positifs {{#Field}} et négatifs {{^Field}})
+    let prevOutput = "";
+    while (prevOutput !== output) {
+      prevOutput = output;
+      // Conditionnels positifs {{#Field}}...{{/Field}}
+      output = output.replace(/\{\{#([a-zA-Z0-9_\- ]+)\}\}((?:(?!\{\{\/\1\}\})[\s\S])*)\{\{\/\1\}\}/g, (match, fieldName, content) => {
+        const val = (fields[fieldName.trim()] || "").trim();
+        return val ? content : "";
+      });
+      // Conditionnels négatifs {{^Field}}...{{/Field}}
+      output = output.replace(/\{\{\^([a-zA-Z0-9_\- ]+)\}\}((?:(?!\{\{\/\1\}\})[\s\S])*)\{\{\/\1\}\}/g, (match, fieldName, content) => {
+        const val = (fields[fieldName.trim()] || "").trim();
+        return val ? "" : content;
+      });
+    }
 
-    // 2. Conditionnels négatifs {{^Field}}...{{/Field}}
-    output = output.replace(/\{\{\^([^}]+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (match, fieldName, content) => {
-      const val = (fields[fieldName.trim()] || "").trim();
-      return val ? "" : content;
-    });
-
-    // 3. Modificateurs Cloze si modèle Cloze
+    // 3. Modificateurs Cloze si modèle Cloze avec tag {{cloze:FieldName}}
+    const targetClozeIdx = card.ord + 1;
     if (model.isCloze) {
-      const targetClozeIdx = card.ord + 1;
       output = output.replace(/\{\{cloze:([^}]+)\}\}/gi, (match, fName) => {
         const val = fields[fName.trim()] || "";
         return this._formatCloze(val, targetClozeIdx, isAnswer);
@@ -364,6 +374,11 @@ class AnkiParser {
     for (const [fName, fVal] of Object.entries(fields)) {
       const reg = new RegExp(`\\{\\{${this._escapeRegExp(fName)}\\}\\}`, "gi");
       output = output.replace(reg, () => fVal);
+    }
+
+    // 5. Si des balises Cloze brutes {{c1::...}} subsistent après l'insertion des champs (ex: Cloze Overlapping)
+    if (model.isCloze || /\{\{c\d+::/i.test(output)) {
+      output = this._formatCloze(output, targetClozeIdx, isAnswer);
     }
 
     return output;
