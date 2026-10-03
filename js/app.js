@@ -794,8 +794,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   searchInput.addEventListener("input", renderExplorerTable);
 
   function stripHtml(html) {
+    if (!html) return "";
+    const cleanHtml = html
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(/<style[\s\S]*?<\/style>/gi, "");
     const tmp = document.createElement("div");
-    tmp.innerHTML = html;
+    tmp.innerHTML = cleanHtml;
     return tmp.textContent || tmp.innerText || "";
   }
 

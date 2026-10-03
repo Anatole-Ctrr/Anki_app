@@ -290,12 +290,21 @@ class AnkiParser {
   }
 
   /**
-   * Traite les balises MathJax/LaTeX et applique Marked.js pour le Markdown enrichi.
+   * Traite les balises MathJax/LaTeX, nettoie les scripts embarqués et applique Marked.js pour le Markdown enrichi.
    */
   _processMarkdownAndMath(htmlText) {
     let result = htmlText || "";
 
-    // 1. Normalisation des balises LaTeX Anki spécifiques vers les délimiteurs TeX standard
+    // 1. Suppression des balises <script> et <style> embarquées dans les modèles Anki complexes (ex: Cloze Overlapping)
+    // afin d'éviter la fuite de code JavaScript dans le texte de la carte
+    result = result.replace(/<script[\s\S]*?<\/script>/gi, "");
+    result = result.replace(/<style[\s\S]*?<\/style>/gi, "");
+
+    // 2. Dé-masquage des éléments masqués par attributs 'hidden' ou 'display:none' des templates Anki
+    result = result.replace(/\bhidden(=["']*(hidden|true|1|["'])*)?/gi, "");
+    result = result.replace(/display:\s*none;?/gi, "");
+
+    // 3. Normalisation des balises LaTeX Anki spécifiques vers les délimiteurs TeX standard
     result = result.replace(/\[math\]([\s\S]*?)\[\/math\]/gi, "\\($1\\)");
     result = result.replace(/\[\$\$?\]([\s\S]*?)\[\/\$\$?\]/gi, (match) => {
       if (match.startsWith("[$$]")) return "\\[" + match.slice(4, -5) + "\\]";
@@ -303,11 +312,13 @@ class AnkiParser {
     });
     result = result.replace(/\[eq\]([\s\S]*?)\[\/eq\]/gi, "\\[$1\\]");
 
-    // 2. Traitement Markdown via Marked.js si présent
+    // 4. Traitement Markdown via Marked.js uniquement sur le contenu sans balises HTML lourdes
     const markedObj = window.marked || (typeof marked !== "undefined" ? marked : null);
     if (markedObj && typeof markedObj.parse === "function") {
-      const hasMarkdownSyntax = /```|`[^`]+`|\*\*|\*|_|#|^\s*[-*+]\s|> /m.test(result);
-      if (hasMarkdownSyntax) {
+      const hasCodeBlocks = /```[\s\S]*?```/.test(result);
+      const isPlainMarkdown = !/<(div|table|p|ol|ul|li|hr|a|img|span)[\s>]/i.test(result);
+
+      if (hasCodeBlocks || isPlainMarkdown) {
         try {
           result = markedObj.parse(result, { gfm: true, breaks: true });
         } catch (e) {
