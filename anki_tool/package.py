@@ -61,15 +61,36 @@ class AnkiPackage:
         with zipfile.ZipFile(self.apkg_path, "r") as zf:
             zf.extractall(self.extracted_path)
 
-        # Recherche de la base SQLite
-        for db_name in ("collection.anki2", "collection.anki21"):
+        # Recherche de la base SQLite valide
+        valid_db = None
+        for db_name in ("collection.anki21b", "collection.anki21", "collection.anki2"):
             candidate = self.extracted_path / db_name
             if candidate.exists():
-                self.db_path = candidate
-                break
+                # Décompression Zstd en Python si nécessaire
+                content = candidate.read_bytes()
+                if content.startswith(b"\x28\xb5\x2f\xfd"):
+                    try:
+                        import zstandard
+                        dctx = zstandard.ZstdDecompressor()
+                        decompressed = dctx.decompress(content)
+                        candidate.write_bytes(decompressed)
+                    except Exception as e:
+                        print(f"Warning: Impossible de décompresser Zstd sur {db_name}: {e}")
 
-        if not self.db_path:
-            raise ValueError("Aucune base SQLite (collection.anki2 ou collection.anki21) trouvée dans l'archive.")
+                try:
+                    conn_test = sqlite3.connect(str(candidate))
+                    cur_test = conn_test.cursor()
+                    cur_test.execute("SELECT count(*) FROM notes;")
+                    conn_test.close()
+                    valid_db = candidate
+                    break
+                except Exception:
+                    pass
+
+        if valid_db:
+            self.db_path = valid_db
+        else:
+            raise ValueError("Aucune base de données Anki valide contenant des notes n'a été trouvée dans le fichier .apkg.")
 
         # Chargement de la table des médias
         media_file = self.extracted_path / "media"

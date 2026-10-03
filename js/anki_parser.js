@@ -62,11 +62,51 @@ class AnkiParser {
     onProgress("Décompression de l'archive .apkg...");
     const zip = await JSZip.loadAsync(fileInput);
 
-    // 1. Recherche de la base de données
-    const dbFile = zip.file("collection.anki2") || zip.file("collection.anki21");
-    if (!dbFile) {
-      throw new Error("Base de données collection.anki2 introuvable dans le paquet.");
+    onProgress("Recherche et décompression de la base SQLite...");
+    const dbCandidates = ["collection.anki21b", "collection.anki21", "collection.anki2"];
+    let loadedDb = null;
+    let lastError = null;
+
+    for (const filename of dbCandidates) {
+      const dbFile = zip.file(filename);
+      if (!dbFile) continue;
+
+      try {
+        let rawBuffer = await dbFile.async("uint8array");
+        rawBuffer = this._decompressZstdIfNeeded(rawBuffer);
+
+        const testDb = new this.sqlInstance.Database(rawBuffer);
+
+        // Validation : la vraie base Anki contient au moins la table 'notes' ou 'col'
+        let isValid = false;
+        try {
+          const checkNotes = testDb.exec("SELECT count(*) FROM notes;");
+          if (checkNotes && checkNotes.length > 0) {
+            isValid = true;
+          }
+        } catch (e) {
+          // Si 'notes' n'existe pas, c'est le fichier stub "Please update to the latest Anki version..."
+        }
+
+        if (isValid) {
+          loadedDb = testDb;
+          break;
+        } else {
+          testDb.close();
+        }
+      } catch (err) {
+        lastError = err;
+        console.warn(`Tentative infructueuse avec ${filename} :`, err);
+      }
     }
+
+    if (!loadedDb) {
+      throw new Error(
+        "Impossible de lire la base de données Anki. Le paquet utilise peut-être une version récente non supportée ou est corrompu."
+      );
+    }
+
+    this.db = loadedDb;
 
     onProgress("Chargement des fichiers multimédias...");
     // 2. Extraction du mapping média
@@ -89,10 +129,6 @@ class AnkiParser {
       }
     }
 
-    onProgress("Ouverture de la base SQLite...");
-    const dbBuffer = await dbFile.async("uint8array");
-    this.db = new this.sqlInstance.Database(dbBuffer);
-
     onProgress("Lecture des modèles et paquets...");
     this._loadCol();
 
@@ -107,6 +143,30 @@ class AnkiParser {
       totalCards: this.cards.length,
       totalMedia: this.mediaMap.size,
     };
+  }
+
+  /**
+   * Décompresse un buffer Zstandard (Zstd) si la signature magic 0x28B52FFD est présente.
+   */
+  _decompressZstdIfNeeded(buffer) {
+    if (
+      buffer &&
+      buffer.length >= 4 &&
+      buffer[0] === 0x28 &&
+      buffer[1] === 0xb5 &&
+      buffer[2] === 0x2f &&
+      buffer[3] === 0xfd
+    ) {
+      const zstdObj = window.fzstd || (typeof fzstd !== "undefined" ? fzstd : null);
+      if (zstdObj && typeof zstdObj.decompress === "function") {
+        return zstdObj.decompress(buffer);
+      } else {
+        throw new Error(
+          "La base Anki est compressée en Zstandard (Zstd). La bibliothèque de décompression fzstd.js n'a pas pu être chargée."
+        );
+      }
+    }
+    return buffer;
   }
 
   _loadCol() {
