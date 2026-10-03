@@ -354,31 +354,46 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // --- Chargement de fichier .apkg ---
-  async function handleFile(file) {
-    if (!file) return;
-    try {
-      showStatus("Analyse et enregistrement du paquet...");
-      const arrayBuffer = await file.arrayBuffer();
+  async function handleFiles(files) {
+    if (!files || files.length === 0) return;
+    const fileList = Array.from(files);
 
-      // Sauvegarde dans IndexedDB (Session Anatole)
-      await libraryStore.savePackage(file.name, file.name, arrayBuffer);
-      const savedPackages = await libraryStore.getAllPackages();
-      renderSavedPackagesList(savedPackages);
+    for (const file of fileList) {
+      try {
+        showStatus(`Analyse et enregistrement de '${file.name}'...`);
+        const arrayBuffer = await file.arrayBuffer();
 
-      const result = await parser.loadApkg(arrayBuffer, (msg) => showStatus(msg));
+        // Sauvegarde dans IndexedDB (Session Anatole) avec tolérance de quota
+        try {
+          await libraryStore.savePackage(file.name, file.name, arrayBuffer);
+          const savedPackages = await libraryStore.getAllPackages();
+          renderSavedPackagesList(savedPackages);
+        } catch (storageErr) {
+          console.warn("Sauvegarde IndexedDB ignorée :", storageErr);
+        }
 
-      populateDecksAndTree(result.decks);
-      updateGlobalStats(result);
-      switchTab("study");
+        const result = await parser.loadApkg(arrayBuffer, (msg) => showStatus(msg));
 
-      uploadSection.classList.add("hidden");
-      mainAppSection.classList.remove("hidden");
-      showStatus(`Paquet '${file.name}' enregistré et chargé ! (${result.totalCards} cartes)`);
-    } catch (err) {
-      console.error(err);
-      showStatus(`Erreur : ${err.message}`, true);
+        populateDecksAndTree(result.decks);
+        updateGlobalStats(result);
+        switchTab("study");
+
+        uploadSection.classList.add("hidden");
+        mainAppSection.classList.remove("hidden");
+        showStatus(`Paquet '${file.name}' chargé avec succès ! (${result.totalCards} cartes)`);
+      } catch (err) {
+        console.error(err);
+        showStatus(`Erreur avec '${file.name}' : ${err.message}`, true);
+      }
     }
   }
+
+  // Clic direct n'importe où dans la zone de drag & drop
+  dropZone.addEventListener("click", (e) => {
+    if (e.target !== fileInput && !e.target.closest("label")) {
+      fileInput.click();
+    }
+  });
 
   // Drag & drop
   ["dragenter", "dragover"].forEach((eventName) => {
@@ -396,13 +411,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   dropZone.addEventListener("drop", (e) => {
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) handleFiles(files);
   });
 
   fileInput.addEventListener("change", (e) => {
-    const file = e.target.files[0];
-    if (file) handleFile(file);
+    const files = e.target.files;
+    if (files && files.length > 0) handleFiles(files);
   });
 
   // Chargement du paquet démo direct
@@ -414,9 +429,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       const blob = await response.blob();
       const arrayBuffer = await blob.arrayBuffer();
 
-      await libraryStore.savePackage("demo_deck.apkg", "Démo - Web & Python", arrayBuffer);
-      const savedPackages = await libraryStore.getAllPackages();
-      renderSavedPackagesList(savedPackages);
+      try {
+        await libraryStore.savePackage("demo_deck.apkg", "Démo - Web & Python", arrayBuffer);
+        const savedPackages = await libraryStore.getAllPackages();
+        renderSavedPackagesList(savedPackages);
+      } catch (storageErr) {}
 
       const result = await parser.loadApkg(arrayBuffer);
       populateDecksAndTree(result.decks);
@@ -435,6 +452,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     fileInput.value = "";
     uploadSection.classList.remove("hidden");
     mainAppSection.classList.add("hidden");
+    fileInput.click();
   });
 
   // --- Gestion des Decks & Arborescence (+/-) ---
