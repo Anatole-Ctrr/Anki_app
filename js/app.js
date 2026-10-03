@@ -375,6 +375,9 @@ document.addEventListener("DOMContentLoaded", () => {
     // Démarrage du chronomètre pour cette carte
     startCardTimer();
     cardContainer.scrollTop = 0;
+
+    // Rendu des formules mathématiques MathJax/LaTeX
+    triggerMathJax();
   }
 
   function showAnswer() {
@@ -385,6 +388,18 @@ document.addEventListener("DOMContentLoaded", () => {
     cardAnswerSection.classList.remove("hidden");
     showAnswerBtn.classList.add("hidden");
     ratingButtonsSection.classList.remove("hidden");
+
+    // Rendu des formules mathématiques au verso
+    triggerMathJax();
+  }
+
+  function triggerMathJax() {
+    if (window.MathJax && typeof window.MathJax.typesetPromise === "function") {
+      const container = document.getElementById("card-container");
+      if (container) {
+        window.MathJax.typesetPromise([container]).catch((err) => console.warn("MathJax error:", err));
+      }
+    }
   }
 
   function handleRating(rating) {

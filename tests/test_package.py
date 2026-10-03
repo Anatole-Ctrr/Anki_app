@@ -23,8 +23,8 @@ class TestAnkiTool(unittest.TestCase):
 
     def test_package_loading(self):
         with AnkiPackage(self.apkg_path) as pkg:
-            self.assertEqual(len(pkg.notes), 6)
-            self.assertEqual(len(pkg.cards), 6)
+            self.assertEqual(len(pkg.notes), 8)
+            self.assertEqual(len(pkg.cards), 8)
             self.assertIn("0", pkg.media_map)
             self.assertEqual(pkg.media_map["0"], "python_logo.png")
 

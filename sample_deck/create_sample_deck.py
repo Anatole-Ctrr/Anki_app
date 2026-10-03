@@ -137,6 +137,22 @@ def create_sample_deck(output_path: str = "demo_deck.apkg"):
             ],
             "pedagogie memoire",
         ),
+        (
+            model_basic_id,
+            [
+                "Quelle est l'identité d'Euler (Formule MathJax / LaTeX) ?",
+                "L'équation d'Euler s'écrit en LaTeX :\n\n\\[ e^{i\\pi} + 1 = 0 \\]\n\nOù \\(e\\) est la base du logarithme naturel, \\(i\\) l'unité imaginaire et \\(\\pi\\) la constante circulaire.",
+            ],
+            "math latex mathjax",
+        ),
+        (
+            model_basic_id,
+            [
+                "Comment déclarer une fonction asynchrone en Python (Markdown) ?",
+                "Voici l'exemple avec bloc de code Markdown :\n\n```python\nimport asyncio\n\nasync def fetch_data():\n    try:\n        print('Chargement...')\n        await asyncio.sleep(1)\n        return {'status': 'ok'}\n    except Exception as e:\n        print('Erreur:', e)\n```",
+            ],
+            "markdown python code",
+        ),
     ]
 
     # Image de démonstration (un logo Python minimaliste en PNG 1x1 ou SVG)

@@ -283,10 +283,40 @@ class AnkiParser {
     const back = this._renderTemplate(afmt, card, model, true, front);
 
     return {
-      front: this._resolveMedia(front),
-      back: this._resolveMedia(back),
+      front: this._resolveMedia(this._processMarkdownAndMath(front)),
+      back: this._resolveMedia(this._processMarkdownAndMath(back)),
       css: model.css || "",
     };
+  }
+
+  /**
+   * Traite les balises MathJax/LaTeX et applique Marked.js pour le Markdown enrichi.
+   */
+  _processMarkdownAndMath(htmlText) {
+    let result = htmlText || "";
+
+    // 1. Normalisation des balises LaTeX Anki spécifiques vers les délimiteurs TeX standard
+    result = result.replace(/\[math\]([\s\S]*?)\[\/math\]/gi, "\\($1\\)");
+    result = result.replace(/\[\$\$?\]([\s\S]*?)\[\/\$\$?\]/gi, (match) => {
+      if (match.startsWith("[$$]")) return "\\[" + match.slice(4, -5) + "\\]";
+      return "\\(" + match.slice(3, -4) + "\\)";
+    });
+    result = result.replace(/\[eq\]([\s\S]*?)\[\/eq\]/gi, "\\[$1\\]");
+
+    // 2. Traitement Markdown via Marked.js si présent
+    const markedObj = window.marked || (typeof marked !== "undefined" ? marked : null);
+    if (markedObj && typeof markedObj.parse === "function") {
+      const hasMarkdownSyntax = /```|`[^`]+`|\*\*|\*|_|#|^\s*[-*+]\s|> /m.test(result);
+      if (hasMarkdownSyntax) {
+        try {
+          result = markedObj.parse(result, { gfm: true, breaks: true });
+        } catch (e) {
+          console.warn("Erreur de parsing Markdown :", e);
+        }
+      }
+    }
+
+    return result;
   }
 
   _renderTemplate(templateStr, card, model, isAnswer, frontSide = "") {
