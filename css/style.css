@@ -68,3 +68,45 @@
 audio {
   outline: none;
 }
+
+/* --- STYLES GAMIFICATION & HEATMAP --- */
+
+/* Animation de pulsation des XP lors d'une bonne réponse */
+@keyframes xpPop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+.xp-pop {
+  animation: xpPop 0.35s ease-out;
+}
+
+/* Heatmap de rétention */
+.heatmap-cell {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.heatmap-cell:hover {
+  transform: scale(1.25);
+  z-index: 10;
+}
+
+/* Niveaux de couleur de la Heatmap (Mode Clair) */
+.heatmap-level-0 { background-color: #f1f5f9; }
+.heatmap-level-1 { background-color: #a7f3d0; }
+.heatmap-level-2 { background-color: #34d399; }
+.heatmap-level-3 { background-color: #10b981; }
+.heatmap-level-4 { background-color: #047857; }
+
+/* Niveaux de couleur de la Heatmap (Mode Sombre) */
+@media (prefers-color-scheme: dark) {
+  .heatmap-level-0 { background-color: #1e293b; }
+  .heatmap-level-1 { background-color: #064e3b; }
+  .heatmap-level-2 { background-color: #047857; }
+  .heatmap-level-3 { background-color: #10b981; }
+  .heatmap-level-4 { background-color: #34d399; }
+}

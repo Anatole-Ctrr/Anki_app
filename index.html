@@ -30,6 +30,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <!-- sql.js (WebAssembly SQLite) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.12.0/sql-wasm.js"></script>
+  <!-- Chart.js pour graphiques de statistiques -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-full flex flex-col font-sans antialiased">
 
@@ -43,6 +45,22 @@
         <div>
           <h1 class="font-bold text-lg leading-tight tracking-tight text-slate-900 dark:text-white">Anki Web Player</h1>
           <p class="text-xs text-slate-500 dark:text-slate-400">Lecteur de paquets .apkg 100% local</p>
+        </div>
+      </div>
+
+      <!-- Badges de Gamification (Header) -->
+      <div id="gamification-header" class="hidden sm:flex items-center space-x-3">
+        <div class="flex items-center space-x-1 px-3 py-1 rounded-full bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 text-xs font-bold shadow-sm" title="Série quotidienne de révision">
+          <span>🔥</span>
+          <span id="user-streak">0j</span>
+        </div>
+        <div class="flex items-center space-x-1 px-3 py-1 rounded-full bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800/50 text-xs font-bold shadow-sm" title="Points d'expérience d'apprentissage">
+          <span>⚡</span>
+          <span id="user-xp">0 XP</span>
+        </div>
+        <div class="flex items-center space-x-1 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50 text-xs font-bold shadow-sm" title="Niveau d'apprenant">
+          <span>🎖️</span>
+          <span id="user-level">Niv. 1</span>
         </div>
       </div>
 
@@ -112,7 +130,7 @@
           🔍 Explorateur de cartes
         </button>
         <button id="tab-stats" class="pb-3 text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center gap-2">
-          📊 Statistiques & Infos
+          📊 Statistiques & Analytics
         </button>
       </nav>
 
@@ -126,6 +144,11 @@
             <div id="card-tags" class="flex flex-wrap gap-1.5 mt-1"></div>
           </div>
           <div class="flex items-center space-x-3">
+            <!-- Chronomètre de réponse -->
+            <div id="card-timer-container" class="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 rounded-lg text-xs font-mono font-bold shadow-sm" title="Temps de réflexion sur cette carte">
+              ⏱️ <span id="card-timer">0.0s</span>
+            </div>
+
             <button id="shuffle-btn" title="Mélanger les cartes" class="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 text-sm font-medium transition-colors">
               🔀 Mélanger
             </button>
@@ -177,16 +200,16 @@
 
             <!-- Boutons d'Évaluation SRS (Après affichage de la réponse) -->
             <div id="rating-buttons-section" class="hidden w-full sm:w-auto grid grid-cols-4 gap-2">
-              <button class="rating-btn px-3 py-2 text-xs sm:text-sm font-semibold rounded-lg bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900/40 dark:text-red-300 transition-colors">
+              <button class="rating-btn rating-1 px-3 py-2 text-xs sm:text-sm font-semibold rounded-lg bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900/40 dark:text-red-300 transition-colors">
                 À revoir <span class="block text-[10px] opacity-70">(1)</span>
               </button>
-              <button class="rating-btn px-3 py-2 text-xs sm:text-sm font-semibold rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 transition-colors">
+              <button class="rating-btn rating-2 px-3 py-2 text-xs sm:text-sm font-semibold rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 transition-colors">
                 Difficile <span class="block text-[10px] opacity-70">(2)</span>
               </button>
-              <button class="rating-btn px-3 py-2 text-xs sm:text-sm font-semibold rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 transition-colors">
+              <button class="rating-btn rating-3 px-3 py-2 text-xs sm:text-sm font-semibold rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 transition-colors">
                 Correct <span class="block text-[10px] opacity-70">(3)</span>
               </button>
-              <button class="rating-btn px-3 py-2 text-xs sm:text-sm font-semibold rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 transition-colors">
+              <button class="rating-btn rating-4 px-3 py-2 text-xs sm:text-sm font-semibold rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 transition-colors">
                 Facile <span class="block text-[10px] opacity-70">(4)</span>
               </button>
             </div>
@@ -224,35 +247,114 @@
         </div>
       </div>
 
-      <!-- VUE 3 : STATISTIQUES & INFOS -->
-      <div id="view-stats" class="hidden flex-1 flex flex-col max-w-4xl mx-auto w-full">
-        <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-4">Métriques du paquet</h3>
+      <!-- VUE 3 : STATISTIQUES & ANALYTICS -->
+      <div id="view-stats" class="hidden flex-1 flex flex-col max-w-4xl mx-auto w-full space-y-6">
         
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-          <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
-            <span class="text-3xl font-black text-blue-600 dark:text-blue-400" id="stat-deck-count">0</span>
-            <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Paquets</p>
-          </div>
-          <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
-            <span class="text-3xl font-black text-indigo-600 dark:text-indigo-400" id="stat-card-count">0</span>
-            <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Cartes</p>
-          </div>
-          <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
-            <span class="text-3xl font-black text-purple-600 dark:text-purple-400" id="stat-note-count">0</span>
-            <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Notes</p>
-          </div>
-          <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
-            <span class="text-3xl font-black text-emerald-600 dark:text-emerald-400" id="stat-media-count">0</span>
-            <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Médias</p>
+        <!-- Cartes Gamification / Synthèse -->
+        <div>
+          <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+            🏆 Tableau de Bord d'Apprentissage
+          </h3>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
+              <div class="text-2xl mb-1">🔥</div>
+              <span class="text-2xl font-black text-amber-500" id="dash-streak">0 jour</span>
+              <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Série Actuelle</p>
+            </div>
+            <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
+              <div class="text-2xl mb-1">⚡</div>
+              <span class="text-2xl font-black text-purple-600 dark:text-purple-400" id="dash-xp">0 XP</span>
+              <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Total Expérience</p>
+            </div>
+            <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
+              <div class="text-2xl mb-1">⏱️</div>
+              <span class="text-2xl font-black text-blue-600 dark:text-blue-400" id="dash-avg-time">0.0s</span>
+              <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Temps Moyen / Carte</p>
+            </div>
+            <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
+              <div class="text-2xl mb-1">🎯</div>
+              <span class="text-2xl font-black text-emerald-600 dark:text-emerald-400" id="dash-accuracy">100%</span>
+              <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Taux de Précision</p>
+            </div>
           </div>
         </div>
 
-        <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm mb-6">
-          <h4 class="font-bold text-sm text-slate-800 dark:text-slate-200 uppercase tracking-wider mb-3">Tags répertoriés</h4>
+        <!-- CALENDRIER DE RÉTENTION (HEATMAP) -->
+        <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+          <div class="flex items-center justify-between mb-4">
+            <h4 class="font-bold text-sm text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
+              📅 Calendrier de Rétention & Assiduité (60 derniers jours)
+            </h4>
+            <span class="text-xs text-slate-500" id="heatmap-total-reviews">0 révision(s) au total</span>
+          </div>
+          
+          <div id="retention-heatmap" class="grid grid-cols-10 sm:grid-cols-15 md:grid-cols-20 gap-1.5 justify-center py-2">
+            <!-- Cases générées dynamiquement en JS -->
+          </div>
+
+          <div class="flex items-center justify-end space-x-2 mt-4 text-xs text-slate-500">
+            <span>Moins actif</span>
+            <div class="w-3 h-3 rounded-sm bg-slate-100 dark:bg-slate-700"></div>
+            <div class="w-3 h-3 rounded-sm bg-emerald-200 dark:bg-emerald-900/60"></div>
+            <div class="w-3 h-3 rounded-sm bg-emerald-400 dark:bg-emerald-700"></div>
+            <div class="w-3 h-3 rounded-sm bg-emerald-600 dark:bg-emerald-500"></div>
+            <span>Plus actif</span>
+          </div>
+        </div>
+
+        <!-- GRAPHIQUES INTERACTIFS (Chart.js) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- Graphique 1 : Distribution des Réponses -->
+          <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col">
+            <h4 class="font-bold text-sm text-slate-800 dark:text-slate-200 uppercase tracking-wider mb-4 text-center">
+              📊 Répartition des Évaluations (SRS)
+            </h4>
+            <div class="w-full h-64 flex items-center justify-center">
+              <canvas id="chart-ratings"></canvas>
+            </div>
+          </div>
+
+          <!-- Graphique 2 : Activité Hebdomadaire -->
+          <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col">
+            <h4 class="font-bold text-sm text-slate-800 dark:text-slate-200 uppercase tracking-wider mb-4 text-center">
+              📈 Révisions Quotidiennes (7 Derniers Jours)
+            </h4>
+            <div class="w-full h-64 flex items-center justify-center">
+              <canvas id="chart-activity"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Métriques Métier du Paquet -->
+        <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+          <h4 class="font-bold text-sm text-slate-800 dark:text-slate-200 uppercase tracking-wider mb-4">
+            📦 Composition du Paquet Actuel
+          </h4>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center mb-6">
+            <div class="p-3 bg-slate-50 dark:bg-slate-750 rounded-xl">
+              <span class="text-xl font-bold text-blue-600 dark:text-blue-400" id="stat-deck-count">0</span>
+              <p class="text-xs text-slate-500 mt-0.5">Paquet(s)</p>
+            </div>
+            <div class="p-3 bg-slate-50 dark:bg-slate-750 rounded-xl">
+              <span class="text-xl font-bold text-indigo-600 dark:text-indigo-400" id="stat-card-count">0</span>
+              <p class="text-xs text-slate-500 mt-0.5">Cartes</p>
+            </div>
+            <div class="p-3 bg-slate-50 dark:bg-slate-750 rounded-xl">
+              <span class="text-xl font-bold text-purple-600 dark:text-purple-400" id="stat-note-count">0</span>
+              <p class="text-xs text-slate-500 mt-0.5">Notes</p>
+            </div>
+            <div class="p-3 bg-slate-50 dark:bg-slate-750 rounded-xl">
+              <span class="text-xl font-bold text-emerald-600 dark:text-emerald-400" id="stat-media-count">0</span>
+              <p class="text-xs text-slate-500 mt-0.5">Fichiers Médias</p>
+            </div>
+          </div>
+
+          <h5 class="font-semibold text-xs text-slate-500 uppercase tracking-wider mb-2">Tags du paquet</h5>
           <div id="stat-tags-container" class="flex flex-wrap gap-2">
             <!-- Rendu dynamique -->
           </div>
         </div>
+
       </div>
 
     </section>
@@ -264,7 +366,7 @@
 
   <!-- Pied de page -->
   <footer class="border-t border-slate-200 dark:border-slate-800 py-4 text-center text-xs text-slate-400">
-    Lecteur Anki Web • Conçu avec JSZip, sql.js (WebAssembly) & Tailwind CSS
+    Lecteur Anki Web • Conçu avec JSZip, sql.js (WebAssembly), Chart.js & Tailwind CSS
   </footer>
 
   <!-- Scripts d'application -->

@@ -1,18 +1,111 @@
 /**
  * Contrôleur de l'application Web Anki.
- * Gère l'interface utilisateur, la navigation, les raccourcis clavier et les interactions.
+ * Gère l'interface utilisateur, la navigation, les raccourcis clavier,
+ * le chronomètre, les statistiques avancées et la ludification (gamification).
  */
+
+class StatsTracker {
+  constructor() {
+    this.STORAGE_KEY = "anki_web_stats_v1";
+    this.data = this.load();
+  }
+
+  load() {
+    const raw = localStorage.getItem(this.STORAGE_KEY);
+    if (raw) {
+      try {
+        return JSON.parse(raw);
+      } catch (e) {}
+    }
+    return {
+      streak: 0,
+      lastActiveDate: null,
+      xp: 0,
+      ratings: { 1: 0, 2: 0, 3: 0, 4: 0 },
+      dailyActivity: {},
+      responseTimes: [],
+    };
+  }
+
+  save() {
+    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.data));
+  }
+
+  recordReview(rating, timeInSec) {
+    const today = new Date().toISOString().split("T")[0];
+
+    // 1. Gestion de la Série Quotidienne (Streak)
+    if (!this.data.lastActiveDate) {
+      this.data.streak = 1;
+    } else if (this.data.lastActiveDate !== today) {
+      const yesterdayDate = new Date(Date.now() - 86400000);
+      const yesterday = yesterdayDate.toISOString().split("T")[0];
+      if (this.data.lastActiveDate === yesterday) {
+        this.data.streak += 1;
+      } else {
+        this.data.streak = 1;
+      }
+    }
+    this.data.lastActiveDate = today;
+
+    // 2. Calcul des Points d'Expérience (XP)
+    let addedXp = 10;
+    if (rating === 4 || (timeInSec > 0 && timeInSec < 5.0)) {
+      addedXp += 5; // Bonus réponse rapide ou facile
+    }
+    this.data.xp += addedXp;
+
+    // 3. Comptage des Évaluations SRS
+    this.data.ratings[rating] = (this.data.ratings[rating] || 0) + 1;
+
+    // 4. Activité Quotidienne
+    this.data.dailyActivity[today] = (this.data.dailyActivity[today] || 0) + 1;
+
+    // 5. Historique du Temps de Réponse (limité aux 200 dernières révisions)
+    if (timeInSec > 0 && timeInSec < 300) {
+      this.data.responseTimes.push(parseFloat(timeInSec.toFixed(1)));
+      if (this.data.responseTimes.length > 200) this.data.responseTimes.shift();
+    }
+
+    this.save();
+    return { xpGained: addedXp, totalXp: this.data.xp, streak: this.data.streak };
+  }
+
+  getAccuracyRate() {
+    const total = (this.data.ratings[1] || 0) + (this.data.ratings[2] || 0) + (this.data.ratings[3] || 0) + (this.data.ratings[4] || 0);
+    if (total === 0) return 100;
+    const success = (this.data.ratings[3] || 0) + (this.data.ratings[4] || 0);
+    return Math.round((success / total) * 100);
+  }
+
+  getAverageResponseTime() {
+    if (!this.data.responseTimes || this.data.responseTimes.length === 0) return 0;
+    const sum = this.data.responseTimes.reduce((a, b) => a + b, 0);
+    return (sum / this.data.responseTimes.length).toFixed(1);
+  }
+
+  getLevel() {
+    return Math.floor(this.data.xp / 100) + 1;
+  }
+}
 
 document.addEventListener("DOMContentLoaded", () => {
   const parser = new AnkiParser();
+  const statsTracker = new StatsTracker();
 
-  // Éléments DOM
+  // Éléments DOM principaux
   const dropZone = document.getElementById("drop-zone");
   const fileInput = document.getElementById("file-input");
   const loadDemoBtn = document.getElementById("load-demo-btn");
   const uploadSection = document.getElementById("upload-section");
   const mainAppSection = document.getElementById("main-app-section");
   const statusToast = document.getElementById("status-toast");
+
+  // Header Gamification Elements
+  const gamificationHeader = document.getElementById("gamification-header");
+  const userStreakEl = document.getElementById("user-streak");
+  const userXpEl = document.getElementById("user-xp");
+  const userLevelEl = document.getElementById("user-level");
 
   // Sélecteurs d'onglets
   const tabStudy = document.getElementById("tab-study");
@@ -26,7 +119,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const deckSelect = document.getElementById("deck-select");
   const currentDeckNameEl = document.getElementById("current-deck-name");
 
-  // Mode Révision
+  // Mode Révision & Chronomètre
   const cardContainer = document.getElementById("card-container");
   const cardFrontEl = document.getElementById("card-front");
   const cardBackEl = document.getElementById("card-back");
@@ -39,13 +132,20 @@ document.addEventListener("DOMContentLoaded", () => {
   const nextCardBtn = document.getElementById("next-card-btn");
   const shuffleBtn = document.getElementById("shuffle-btn");
   const cardTagsEl = document.getElementById("card-tags");
+  const cardTimerEl = document.getElementById("card-timer");
+
+  // Dashboard Stats Elements
+  const dashStreak = document.getElementById("dash-streak");
+  const dashXp = document.getElementById("dash-xp");
+  const dashAvgTime = document.getElementById("dash-avg-time");
+  const dashAccuracy = document.getElementById("dash-accuracy");
 
   // Explorateur
   const searchInput = document.getElementById("search-input");
   const cardsTableBody = document.getElementById("cards-table-body");
   const explorerCardCount = document.getElementById("explorer-card-count");
 
-  // Stats
+  // Metrics Paquet
   const statDeckCount = document.getElementById("stat-deck-count");
   const statCardCount = document.getElementById("stat-card-count");
   const statNoteCount = document.getElementById("stat-note-count");
@@ -57,10 +157,52 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentCards = [];
   let currentIndex = 0;
   let isAnswerShown = false;
-  let sessionReviewed = 0;
   let styleElement = null;
 
-  // --- Gestion des notifications ---
+  // Chronomètre variables
+  let timerStartTime = 0;
+  let timerInterval = null;
+  let currentCardResponseTime = 0;
+
+  // Chart instances
+  let chartRatingsInstance = null;
+  let chartActivityInstance = null;
+
+  // Initialisation de la Gamification au lancement
+  updateHeaderGamification();
+
+  function updateHeaderGamification() {
+    if (!userStreakEl) return;
+    userStreakEl.textContent = `${statsTracker.data.streak}j`;
+    userXpEl.textContent = `${statsTracker.data.xp} XP`;
+    userLevelEl.textContent = `Niv. ${statsTracker.getLevel()}`;
+    if (gamificationHeader) gamificationHeader.classList.remove("hidden");
+  }
+
+  // --- Gestion du Chronomètre ---
+  function startCardTimer() {
+    stopCardTimer();
+    timerStartTime = Date.now();
+    currentCardResponseTime = 0;
+    if (cardTimerEl) cardTimerEl.textContent = "0.0s";
+
+    timerInterval = setInterval(() => {
+      const elapsed = (Date.now() - timerStartTime) / 1000;
+      if (cardTimerEl) cardTimerEl.textContent = `${elapsed.toFixed(1)}s`;
+    }, 100);
+  }
+
+  function stopCardTimer() {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+      if (timerStartTime > 0) {
+        currentCardResponseTime = (Date.now() - timerStartTime) / 1000;
+      }
+    }
+  }
+
+  // --- Gestion des notifications Toast ---
   function showStatus(message, isError = false) {
     statusToast.textContent = message;
     statusToast.className = `fixed bottom-6 right-6 px-5 py-3 rounded-xl shadow-2xl text-sm font-medium z-50 transition-all duration-300 transform translate-y-0 ${
@@ -110,7 +252,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   dropZone.addEventListener("drop", (e) => {
-    const file = e.dataTransfer.files[0];
+    const file = e.target.files[0];
     if (file) handleFile(file);
   });
 
@@ -195,6 +337,7 @@ document.addEventListener("DOMContentLoaded", () => {
       cardCounterEl.textContent = "0 / 0";
       cardProgressBar.style.width = "0%";
       cardTagsEl.innerHTML = "";
+      stopCardTimer();
       return;
     }
 
@@ -229,16 +372,32 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // Scroll au sommet de la carte
+    // Démarrage du chronomètre pour cette carte
+    startCardTimer();
     cardContainer.scrollTop = 0;
   }
 
   function showAnswer() {
     if (isAnswerShown) return;
     isAnswerShown = true;
+    stopCardTimer(); // Arrêt du chrono au dévoilement
+
     cardAnswerSection.classList.remove("hidden");
     showAnswerBtn.classList.add("hidden");
     ratingButtonsSection.classList.remove("hidden");
+  }
+
+  function handleRating(rating) {
+    const res = statsTracker.recordReview(rating, currentCardResponseTime);
+    updateHeaderGamification();
+
+    // Effet visuel pop sur le badge XP
+    if (userXpEl) {
+      userXpEl.classList.add("xp-pop");
+      setTimeout(() => userXpEl.classList.remove("xp-pop"), 400);
+    }
+
+    nextCard();
   }
 
   function nextCard() {
@@ -246,7 +405,8 @@ document.addEventListener("DOMContentLoaded", () => {
       currentIndex++;
       renderCurrentCard();
     } else {
-      showStatus("Vous avez parcouru toutes les cartes de ce paquet !");
+      stopCardTimer();
+      showStatus("Vous avez parcouru toutes les cartes de ce paquet ! 🎉");
     }
   }
 
@@ -261,17 +421,14 @@ document.addEventListener("DOMContentLoaded", () => {
   prevCardBtn.addEventListener("click", prevCard);
   nextCardBtn.addEventListener("click", nextCard);
 
-  // Évaluation SRS (Boutons Encore / Difficile / Bien / Facile)
-  document.querySelectorAll(".rating-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      sessionReviewed++;
-      nextCard();
-    });
-  });
+  // Évaluation SRS (Boutons 1 à 4)
+  document.querySelector(".rating-1")?.addEventListener("click", () => handleRating(1));
+  document.querySelector(".rating-2")?.addEventListener("click", () => handleRating(2));
+  document.querySelector(".rating-3")?.addEventListener("click", () => handleRating(3));
+  document.querySelector(".rating-4")?.addEventListener("click", () => handleRating(4));
 
   // --- Raccourcis clavier ergonomiques ---
   window.addEventListener("keydown", (e) => {
-    // Si l'utilisateur est en train de taper dans un champ de recherche, ne rien faire
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
     if (mainAppSection.classList.contains("hidden")) return;
     if (viewStudy.classList.contains("hidden")) return;
@@ -287,9 +444,11 @@ document.addEventListener("DOMContentLoaded", () => {
       nextCard();
     } else if (e.code === "ArrowLeft") {
       prevCard();
-    } else if (isAnswerShown && ["Digit1", "Digit2", "Digit3", "Digit4"].includes(e.code)) {
-      sessionReviewed++;
-      nextCard();
+    } else if (isAnswerShown) {
+      if (e.code === "Digit1") handleRating(1);
+      else if (e.code === "Digit2") handleRating(2);
+      else if (e.code === "Digit3") handleRating(3);
+      else if (e.code === "Digit4") handleRating(4);
     }
   });
 
@@ -312,7 +471,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const tr = document.createElement("tr");
       tr.className = "hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer border-b border-slate-200 dark:border-slate-800 transition-colors";
 
-      // Extraction du texte sans balises HTML
       const frontClean = stripHtml(rendered.front);
       const backClean = stripHtml(rendered.back);
       const tagsStr = (card.note?.tags || []).join(", ") || "-";
@@ -324,7 +482,6 @@ document.addEventListener("DOMContentLoaded", () => {
         <td class="py-3 px-4 text-xs text-slate-500">${tagsStr}</td>
       `;
 
-      // Clic pour ouvrir la carte en mode révision
       tr.addEventListener("click", () => {
         const foundIdx = currentCards.findIndex((c) => c.id === card.id);
         if (foundIdx !== -1) {
@@ -346,14 +503,13 @@ document.addEventListener("DOMContentLoaded", () => {
     return tmp.textContent || tmp.innerText || "";
   }
 
-  // --- Statistiques globales ---
+  // --- Statistiques globales & Analytics ---
   function updateGlobalStats(result) {
     statDeckCount.textContent = result.decks.length;
     statCardCount.textContent = result.totalCards;
     statNoteCount.textContent = result.totalNotes;
     statMediaCount.textContent = result.totalMedia;
 
-    // Récupération de tous les tags uniques
     const allTags = new Set();
     for (const note of parser.notes.values()) {
       note.tags.forEach((t) => allTags.add(t));
@@ -368,6 +524,121 @@ document.addEventListener("DOMContentLoaded", () => {
         badge.className = "px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300";
         badge.textContent = `#${tag}`;
         statTagsContainer.appendChild(badge);
+      });
+    }
+
+    renderAnalyticsDashboard();
+  }
+
+  function renderAnalyticsDashboard() {
+    // 1. Dashboard métriques
+    if (dashStreak) dashStreak.textContent = `${statsTracker.data.streak} jour(s)`;
+    if (dashXp) dashXp.textContent = `${statsTracker.data.xp} XP`;
+    if (dashAvgTime) dashAvgTime.textContent = `${statsTracker.getAverageResponseTime()}s`;
+    if (dashAccuracy) dashAccuracy.textContent = `${statsTracker.getAccuracyRate()}%`;
+
+    // 2. Heatmap de rétention
+    renderHeatmap();
+
+    // 3. Graphiques Chart.js
+    renderCharts();
+  }
+
+  function renderHeatmap() {
+    const container = document.getElementById("retention-heatmap");
+    const totalLabel = document.getElementById("heatmap-total-reviews");
+    if (!container) return;
+
+    container.innerHTML = "";
+    const days = 60;
+    let totalCount = 0;
+
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86400000);
+      const dateStr = d.toISOString().split("T")[0];
+      const count = statsTracker.data.dailyActivity[dateStr] || 0;
+      totalCount += count;
+
+      let levelClass = "heatmap-level-0";
+      if (count >= 20) levelClass = "heatmap-level-4";
+      else if (count >= 10) levelClass = "heatmap-level-3";
+      else if (count >= 5) levelClass = "heatmap-level-2";
+      else if (count >= 1) levelClass = "heatmap-level-1";
+
+      const cell = document.createElement("div");
+      cell.className = `heatmap-cell ${levelClass}`;
+      cell.title = `${d.toLocaleDateString("fr-FR")} : ${count} révision(s)`;
+      container.appendChild(cell);
+    }
+
+    if (totalLabel) {
+      totalLabel.textContent = `${totalCount} révision(s) sur les 60 derniers jours`;
+    }
+  }
+
+  function renderCharts() {
+    // Chart 1: Ratings Doughnut
+    const ctxRatings = document.getElementById("chart-ratings");
+    if (ctxRatings && typeof Chart !== "undefined") {
+      if (chartRatingsInstance) chartRatingsInstance.destroy();
+
+      const r = statsTracker.data.ratings;
+      chartRatingsInstance = new Chart(ctxRatings, {
+        type: 'doughnut',
+        data: {
+          labels: ['À revoir', 'Difficile', 'Correct', 'Facile'],
+          datasets: [{
+            data: [r[1] || 0, r[2] || 0, r[3] || 0, r[4] || 0],
+            backgroundColor: ['#ef4444', '#f59e0b', '#3b82f6', '#10b981'],
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15 } }
+          }
+        }
+      });
+    }
+
+    // Chart 2: Daily Activity Bar
+    const ctxActivity = document.getElementById("chart-activity");
+    if (ctxActivity && typeof Chart !== "undefined") {
+      if (chartActivityInstance) chartActivityInstance.destroy();
+
+      const last7Days = [];
+      const counts = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(Date.now() - i * 86400000);
+        const dStr = d.toISOString().split("T")[0];
+        const dayLabel = d.toLocaleDateString("fr-FR", { weekday: 'short', day: 'numeric' });
+        last7Days.push(dayLabel);
+        counts.push(statsTracker.data.dailyActivity[dStr] || 0);
+      }
+
+      chartActivityInstance = new Chart(ctxActivity, {
+        type: 'bar',
+        data: {
+          labels: last7Days,
+          datasets: [{
+            label: 'Cartes révisées',
+            data: counts,
+            backgroundColor: '#3b82f6',
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: { beginAtZero: true, ticks: { stepSize: 1 } }
+          },
+          plugins: {
+            legend: { display: false }
+          }
+        }
       });
     }
   }
@@ -393,6 +664,7 @@ document.addEventListener("DOMContentLoaded", () => {
       tabStats.classList.add("text-blue-600", "dark:text-blue-400", "border-b-2", "border-blue-600", "dark:border-blue-400", "font-semibold");
       tabStats.classList.remove("text-slate-600", "dark:text-slate-400");
       viewStats.classList.remove("hidden");
+      renderAnalyticsDashboard();
     }
   }
 
