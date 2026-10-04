@@ -37,3 +37,7 @@ coverage.xml
 # OS
 .DS_Store
 Thumbs.db
+
+# Anki Packages
+*.apkg
+*.colpkg

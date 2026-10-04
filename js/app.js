@@ -419,8 +419,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (file) handleFile(file);
   });
 
-  // Chargement du paquet démo direct
-  loadDemoBtn.addEventListener("click", async () => {
+  // Chargement du paquet démo direct (si présent)
+  loadDemoBtn?.addEventListener("click", async () => {
     try {
       showStatus("Téléchargement du paquet de démonstration...");
       const response = await fetch("demo_deck.apkg");
