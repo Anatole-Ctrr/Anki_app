@@ -26,14 +26,14 @@
   </script>
   <!-- Custom CSS -->
   <link rel="stylesheet" href="css/style.css">
-  <!-- JSZip pour décompression .apkg côté client -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <!-- fzstd pour décompression Zstandard des paquets Anki récents (.anki21) -->
-  <script src="https://cdn.jsdelivr.net/npm/fzstd@0.1.1/umd/index.js"></script>
-  <!-- sql.js (WebAssembly SQLite) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.12.0/sql-wasm.js"></script>
-  <!-- Marked.js pour le rendu Markdown enrichi -->
-  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <!-- JSZip pour décompression .apkg côté client (embarqué localement) -->
+  <script src="vendor/jszip.min.js"></script>
+  <!-- fzstd pour décompression Zstandard des paquets Anki récents (.anki21) (local) -->
+  <script src="vendor/fzstd.js"></script>
+  <!-- sql.js (WebAssembly SQLite embarqué localement) -->
+  <script src="vendor/sql-wasm.js"></script>
+  <!-- Marked.js pour le rendu Markdown enrichi (local) -->
+  <script src="vendor/marked.min.js"></script>
   <!-- Configuration et moteur MathJax 3 pour le rendu LaTeX -->
   <script>
     window.MathJax = {

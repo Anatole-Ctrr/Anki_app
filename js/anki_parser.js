@@ -21,12 +21,22 @@ class AnkiParser {
   async initSql() {
     if (!this.sqlInstance) {
       if (typeof initSqlJs !== "function") {
-        throw new Error("sql.js n'est pas chargé. Vérifiez la connexion Internet ou les scripts CDN.");
+        throw new Error("sql.js n'est pas chargé. Vérifiez les scripts dans vendor/ ou votre connexion.");
       }
-      this.sqlInstance = await initSqlJs({
-        locateFile: (file) => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.12.0/${file}`,
-      });
+      try {
+        // 1. Priorité absolue : chargement local instantané et hors-ligne
+        this.sqlInstance = await initSqlJs({
+          locateFile: (file) => `./vendor/${file}`,
+        });
+      } catch (localErr) {
+        console.warn("Échec du chargement SQLite WebAssembly local, tentative de secours via CDN...", localErr);
+        // 2. Secours CDN en cas d'environnement restreint
+        this.sqlInstance = await initSqlJs({
+          locateFile: (file) => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.12.0/${file}`,
+        });
+      }
     }
+    return this.sqlInstance;
   }
 
   /**
@@ -57,6 +67,7 @@ class AnkiParser {
    */
   async loadApkg(fileInput, onProgress = () => {}) {
     this.reset();
+    onProgress("Initialisation du moteur SQLite (WebAssembly)...");
     await this.initSql();
 
     onProgress("Décompression de l'archive .apkg...");

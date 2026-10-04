@@ -95,6 +95,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   const statsTracker = new StatsTracker();
   const libraryStore = new LibraryStore();
 
+  // Pré-chargement silencieux en arrière-plan du moteur SQLite WebAssembly (accélère le premier import)
+  parser.initSql().catch((err) => {
+    console.warn("Pré-chargement SQLite Wasm :", err);
+  });
+
   // Éléments DOM principaux
   const dropZone = document.getElementById("drop-zone");
   const fileInput = document.getElementById("file-input");
