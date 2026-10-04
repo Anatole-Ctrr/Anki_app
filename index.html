@@ -75,6 +75,14 @@
           <span>🔥</span>
           <span id="user-streak">0j</span>
         </div>
+        <div class="flex items-center space-x-1 px-3 py-1 rounded-full bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800/50 text-xs font-bold shadow-sm" title="Points d'expérience d'apprentissage">
+          <span>⚡</span>
+          <span id="user-xp">0 XP</span>
+        </div>
+        <div class="flex items-center space-x-1 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50 text-xs font-bold shadow-sm" title="Niveau d'apprenant">
+          <span>🎖️</span>
+          <span id="user-level">Niv. 1</span>
+        </div>
       </div>
 
       <!-- Actions de navigation (affichées après chargement) -->
@@ -120,7 +128,7 @@
         <label for="file-input" class="inline-flex items-center justify-center px-5 py-2.5 rounded-xl font-medium text-sm text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-sm cursor-pointer">
           Sélectionner un paquet .apkg
         </label>
-        <input type="file" id="file-input" accept=".apkg,.APKG,.colpkg,.COLPKG,.zip,application/x-apkg,application/zip" multiple class="hidden">
+        <input type="file" id="file-input" accept=".apkg" class="hidden">
       </div>
 
       <!-- Bouton de test direct -->
@@ -310,41 +318,32 @@
           <!-- VUE 3 : STATISTIQUES & ANALYTICS -->
           <div id="view-stats" class="hidden flex-1 flex flex-col w-full space-y-6">
             
-            <!-- Cartes Synthèse -->
+            <!-- Cartes Gamification / Synthèse -->
             <div>
               <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
                 🏆 Tableau de Bord d'Apprentissage
               </h3>
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
                   <div class="text-2xl mb-1">🔥</div>
                   <span class="text-2xl font-black text-amber-500" id="dash-streak">0 jour</span>
                   <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Série Actuelle</p>
                 </div>
                 <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
-                  <div class="text-2xl mb-1">🎯</div>
-                  <span class="text-2xl font-black text-emerald-600 dark:text-emerald-400" id="dash-accuracy">100%</span>
-                  <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Taux de Précision Global</p>
+                  <div class="text-2xl mb-1">⚡</div>
+                  <span class="text-2xl font-black text-purple-600 dark:text-purple-400" id="dash-xp">0 XP</span>
+                  <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Total Expérience</p>
                 </div>
                 <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
-                  <div class="text-2xl mb-1">🃏</div>
-                  <span class="text-2xl font-black text-blue-600 dark:text-blue-400" id="dash-total-cards">0</span>
-                  <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Total Fiches en Bibliothèque</p>
+                  <div class="text-2xl mb-1">⏱️</div>
+                  <span class="text-2xl font-black text-blue-600 dark:text-blue-400" id="dash-avg-time">0.0s</span>
+                  <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Temps Moyen / Carte</p>
                 </div>
-              </div>
-            </div>
-
-            <!-- STATISTIQUES PAR PAQUET RACINE (DÉBUT DE BRANCHE) -->
-            <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
-              <div class="flex items-center justify-between mb-4">
-                <h4 class="font-bold text-sm text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
-                  📁 Statistiques par Paquet Principal (Début de branche)
-                </h4>
-                <span class="text-xs text-slate-500 font-mono" id="root-decks-count">0 paquet(s) racine</span>
-              </div>
-
-              <div id="root-decks-stats-container" class="space-y-4">
-                <!-- Cartes générées dynamiquement en JS pour chaque paquet racine -->
+                <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
+                  <div class="text-2xl mb-1">🎯</div>
+                  <span class="text-2xl font-black text-emerald-600 dark:text-emerald-400" id="dash-accuracy">100%</span>
+                  <p class="text-xs text-slate-500 font-semibold uppercase mt-1">Taux de Précision</p>
+                </div>
               </div>
             </div>
 

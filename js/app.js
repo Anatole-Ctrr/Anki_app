@@ -15,17 +15,16 @@ class StatsTracker {
     const raw = localStorage.getItem(this.STORAGE_KEY);
     if (raw) {
       try {
-        const parsed = JSON.parse(raw);
-        if (!parsed.cardRatings) parsed.cardRatings = {};
-        return parsed;
+        return JSON.parse(raw);
       } catch (e) {}
     }
     return {
       streak: 0,
       lastActiveDate: null,
+      xp: 0,
       ratings: { 1: 0, 2: 0, 3: 0, 4: 0 },
-      cardRatings: {},
       dailyActivity: {},
+      responseTimes: [],
     };
   }
 
@@ -33,7 +32,7 @@ class StatsTracker {
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.data));
   }
 
-  recordReview(rating, cardId = null) {
+  recordReview(rating, timeInSec) {
     const today = new Date().toISOString().split("T")[0];
 
     // 1. Gestion de la Série Quotidienne (Streak)
@@ -50,22 +49,27 @@ class StatsTracker {
     }
     this.data.lastActiveDate = today;
 
-    // 2. Comptage global des évaluations SRS
-    if (!this.data.ratings) this.data.ratings = { 1: 0, 2: 0, 3: 0, 4: 0 };
+    // 2. Calcul des Points d'Expérience (XP)
+    let addedXp = 10;
+    if (rating === 4 || (timeInSec > 0 && timeInSec < 5.0)) {
+      addedXp += 5; // Bonus réponse rapide ou facile
+    }
+    this.data.xp += addedXp;
+
+    // 3. Comptage des Évaluations SRS
     this.data.ratings[rating] = (this.data.ratings[rating] || 0) + 1;
 
-    // 3. Suivi individuel de la carte (ID)
-    if (cardId !== null && cardId !== undefined) {
-      if (!this.data.cardRatings) this.data.cardRatings = {};
-      this.data.cardRatings[cardId] = rating;
-    }
-
     // 4. Activité Quotidienne
-    if (!this.data.dailyActivity) this.data.dailyActivity = {};
     this.data.dailyActivity[today] = (this.data.dailyActivity[today] || 0) + 1;
 
+    // 5. Historique du Temps de Réponse (limité aux 200 dernières révisions)
+    if (timeInSec > 0 && timeInSec < 300) {
+      this.data.responseTimes.push(parseFloat(timeInSec.toFixed(1)));
+      if (this.data.responseTimes.length > 200) this.data.responseTimes.shift();
+    }
+
     this.save();
-    return { streak: this.data.streak };
+    return { xpGained: addedXp, totalXp: this.data.xp, streak: this.data.streak };
   }
 
   getAccuracyRate() {
@@ -73,6 +77,16 @@ class StatsTracker {
     if (total === 0) return 100;
     const success = (this.data.ratings[3] || 0) + (this.data.ratings[4] || 0);
     return Math.round((success / total) * 100);
+  }
+
+  getAverageResponseTime() {
+    if (!this.data.responseTimes || this.data.responseTimes.length === 0) return 0;
+    const sum = this.data.responseTimes.reduce((a, b) => a + b, 0);
+    return (sum / this.data.responseTimes.length).toFixed(1);
+  }
+
+  getLevel() {
+    return Math.floor(this.data.xp / 100) + 1;
   }
 }
 
@@ -236,37 +250,26 @@ document.addEventListener("DOMContentLoaded", async () => {
   updateHeaderGamification();
 
   // --- Chargement de la bibliothèque IndexedDB au démarrage ---
-  await reloadAllLibraryPackages();
+  await loadLibraryFromStorage();
 
-  async function reloadAllLibraryPackages() {
+  async function loadLibraryFromStorage() {
     try {
       const savedPackages = await libraryStore.getAllPackages();
       renderSavedPackagesList(savedPackages);
-      if (savedPackages.length === 0) return;
-
-      showStatus(`Chargement de ${savedPackages.length} paquet(s) de votre bibliothèque...`);
-      parser.reset();
-
-      for (let i = 0; i < savedPackages.length; i++) {
-        const pkg = savedPackages[i];
-        try {
-          await parser.loadApkg(pkg.buffer, () => {}, i === 0);
-        } catch (pkgErr) {
-          console.warn(`Impossible de charger le paquet '${pkg.name}' :`, pkgErr);
-        }
+      if (savedPackages.length > 0) {
+        const latest = savedPackages.sort((a, b) => b.timestamp - a.timestamp)[0];
+        showStatus(`Chargement de '${latest.name}' depuis votre bibliothèque...`);
+        await parser.loadApkg(latest.buffer);
+        populateDecksAndTree(Array.from(parser.decks.values()));
+        updateGlobalStats({
+          decks: Array.from(parser.decks.values()),
+          totalNotes: parser.notes.size,
+          totalCards: parser.cards.length,
+          totalMedia: parser.mediaMap.size,
+        });
+        uploadSection.classList.add("hidden");
+        mainAppSection.classList.remove("hidden");
       }
-
-      populateDecksAndTree(Array.from(parser.decks.values()));
-      updateGlobalStats({
-        decks: Array.from(parser.decks.values()),
-        totalNotes: parser.notes.size,
-        totalCards: parser.cards.length,
-        totalMedia: parser.mediaMap.size,
-      });
-
-      uploadSection.classList.add("hidden");
-      mainAppSection.classList.remove("hidden");
-      showStatus(`Bibliothèque chargée ! (${savedPackages.length} paquet(s), ${parser.cards.length} cartes au total)`);
     } catch (e) {
       console.warn("Impossible de charger la bibliothèque IndexedDB :", e);
     }
@@ -296,8 +299,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (e.target.classList.contains("delete-pkg-btn")) {
           e.stopPropagation();
           await libraryStore.deletePackage(pkg.id);
+          const updated = await libraryStore.getAllPackages();
+          renderSavedPackagesList(updated);
           showStatus(`Paquet '${pkg.name}' supprimé.`);
-          await reloadAllLibraryPackages();
           return;
         }
         await parser.loadApkg(pkg.buffer);
@@ -312,9 +316,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     clearLibraryBtn.addEventListener("click", async () => {
       if (confirm("Voulez-vous vider tous les paquets enregistrés dans votre bibliothèque ?")) {
         await libraryStore.clearAll();
-        parser.reset();
         renderSavedPackagesList([]);
-        populateDecksAndTree([]);
         showStatus("Bibliothèque vidée.");
       }
     });
@@ -366,56 +368,31 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // --- Chargement de fichier .apkg ---
-  async function handleFiles(files) {
-    if (!files || files.length === 0) return;
-    const fileList = Array.from(files);
+  async function handleFile(file) {
+    if (!file) return;
+    try {
+      showStatus("Analyse et enregistrement du paquet...");
+      const arrayBuffer = await file.arrayBuffer();
 
-    for (let i = 0; i < fileList.length; i++) {
-      const file = fileList[i];
-      try {
-        showStatus(`Analyse et chargement de '${file.name}'...`);
-        const arrayBuffer = await file.arrayBuffer();
+      // Sauvegarde dans IndexedDB (Session Anatole)
+      await libraryStore.savePackage(file.name, file.name, arrayBuffer);
+      const savedPackages = await libraryStore.getAllPackages();
+      renderSavedPackagesList(savedPackages);
 
-        // 1. Sauvegarde dans IndexedDB (Session Anatole) en arrière-plan
-        try {
-          await libraryStore.savePackage(file.name, file.name, arrayBuffer);
-          const savedPackages = await libraryStore.getAllPackages();
-          renderSavedPackagesList(savedPackages);
-        } catch (storageErr) {
-          console.warn("Sauvegarde IndexedDB ignorée :", storageErr);
-        }
+      const result = await parser.loadApkg(arrayBuffer, (msg) => showStatus(msg));
 
-        // 2. Chargement direct du paquet dans le moteur Anki Parser (réinitialise au 1er fichier, cumule les suivants)
-        const result = await parser.loadApkg(arrayBuffer, (msg) => showStatus(msg), i === 0);
+      populateDecksAndTree(result.decks);
+      updateGlobalStats(result);
+      switchTab("study");
 
-        // 3. Bascule immédiate de l'écran vers l'application de révision
-        populateDecksAndTree(Array.from(parser.decks.values()));
-        updateGlobalStats({
-          decks: Array.from(parser.decks.values()),
-          totalNotes: parser.notes.size,
-          totalCards: parser.cards.length,
-          totalMedia: parser.mediaMap.size,
-        });
-        switchTab("study");
-
-        uploadSection.classList.add("hidden");
-        mainAppSection.classList.remove("hidden");
-        showStatus(`Paquet '${file.name}' chargé avec succès ! (${result.totalCards} cartes)`);
-      } catch (err) {
-        console.error(err);
-        showStatus(`Erreur avec '${file.name}' : ${err.message}`, true);
-        alert(`Impossible de charger le paquet '${file.name}' :\n${err.message}`);
-      }
+      uploadSection.classList.add("hidden");
+      mainAppSection.classList.remove("hidden");
+      showStatus(`Paquet '${file.name}' enregistré et chargé ! (${result.totalCards} cartes)`);
+    } catch (err) {
+      console.error(err);
+      showStatus(`Erreur : ${err.message}`, true);
     }
   }
-
-  // Clic direct n'importe où dans la zone de drag & drop
-  dropZone.addEventListener("click", (e) => {
-    if (e.target !== fileInput && !e.target.closest("label")) {
-      fileInput.value = "";
-      fileInput.click();
-    }
-  });
 
   // Drag & drop
   ["dragenter", "dragover"].forEach((eventName) => {
@@ -433,13 +410,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   dropZone.addEventListener("drop", (e) => {
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) handleFiles(files);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
   });
 
   fileInput.addEventListener("change", (e) => {
-    const files = e.target.files;
-    if (files && files.length > 0) handleFiles(files);
+    const file = e.target.files[0];
+    if (file) handleFile(file);
   });
 
   // Chargement du paquet démo direct
@@ -451,7 +428,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       const blob = await response.blob();
       const arrayBuffer = await blob.arrayBuffer();
 
-      const result = await parser.loadApkg(arrayBuffer, (msg) => showStatus(msg));
+      await libraryStore.savePackage("demo_deck.apkg", "Démo - Web & Python", arrayBuffer);
+      const savedPackages = await libraryStore.getAllPackages();
+      renderSavedPackagesList(savedPackages);
+
+      const result = await parser.loadApkg(arrayBuffer);
       populateDecksAndTree(result.decks);
       updateGlobalStats(result);
       switchTab("study");
@@ -459,16 +440,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       uploadSection.classList.add("hidden");
       mainAppSection.classList.remove("hidden");
       showStatus("Paquet démo chargé et enregistré dans votre bibliothèque !");
-
-      try {
-        await libraryStore.savePackage("demo_deck.apkg", "Démo - Web & Python", arrayBuffer);
-        const savedPackages = await libraryStore.getAllPackages();
-        renderSavedPackagesList(savedPackages);
-      } catch (storageErr) {}
     } catch (err) {
-      console.error(err);
       showStatus(`Impossible de charger le paquet démo : ${err.message}`, true);
-      alert(`Erreur lors du chargement du paquet démo :\n${err.message}`);
     }
   });
 
@@ -476,7 +449,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     fileInput.value = "";
     uploadSection.classList.remove("hidden");
     mainAppSection.classList.add("hidden");
-    fileInput.click();
   });
 
   // --- Gestion des Decks & Arborescence (+/-) ---
@@ -544,7 +516,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    function createTreeNodeHTML(node, isRootLevel = false) {
+    function createTreeNodeHTML(node) {
       const wrapper = document.createElement("div");
       wrapper.className = "tree-node-wrapper space-y-0.5";
 
@@ -582,30 +554,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       wrapper.appendChild(itemDiv);
 
-      // Affichage des statistiques de début de branche (uniquement au niveau racine, pas sous-dossiers)
-      if (isRootLevel && totalCardsInSubtree > 0) {
-        let knownCount = 0;
-        subCards.forEach((c) => {
-          const r = statsTracker.data.cardRatings ? statsTracker.data.cardRatings[c.id] : 0;
-          if (r === 3 || r === 4) knownCount++;
-        });
-        const remainingCount = totalCardsInSubtree - knownCount;
-
-        const rootStatsDiv = document.createElement("div");
-        rootStatsDiv.className = "flex items-center space-x-2 text-[10px] text-slate-500 dark:text-slate-400 pl-4 py-0.5 border-b border-slate-100 dark:border-slate-800 mb-1";
-        rootStatsDiv.innerHTML = `
-          <span class="text-emerald-600 dark:text-emerald-400 font-semibold">🟢 ${knownCount} connues</span>
-          <span>·</span>
-          <span class="text-amber-600 dark:text-amber-400 font-semibold">🔄 ${remainingCount} à réviser</span>
-        `;
-        wrapper.appendChild(rootStatsDiv);
-      }
-
       if (hasChildren && node.isExpanded) {
         const childrenContainer = document.createElement("div");
         childrenContainer.className = "tree-children pl-3 space-y-0.5 border-l border-slate-200 dark:border-slate-700 ml-2 mt-0.5";
         node.children.forEach((child) => {
-          childrenContainer.appendChild(createTreeNodeHTML(child, false));
+          childrenContainer.appendChild(createTreeNodeHTML(child));
         });
         wrapper.appendChild(childrenContainer);
       }
@@ -614,7 +567,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     treeNodes.forEach((rootNode) => {
-      containerEl.appendChild(createTreeNodeHTML(rootNode, true));
+      containerEl.appendChild(createTreeNodeHTML(rootNode));
     });
   }
 
@@ -727,16 +680,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function handleRating(rating) {
-    const currentCard = currentCards[currentIndex];
-    const cardId = currentCard ? currentCard.id : null;
-    statsTracker.recordReview(rating, cardId);
-
+    const res = statsTracker.recordReview(rating, currentCardResponseTime);
     updateHeaderGamification();
-    nextCard();
-    renderAnalyticsDashboard();
 
-    const rootNodes = buildTreeFromDecks(Array.from(parser.decks.values()));
-    renderDeckTree(rootNodes, deckTreeContainer);
+    if (userXpEl) {
+      userXpEl.classList.add("xp-pop");
+      setTimeout(() => userXpEl.classList.remove("xp-pop"), 400);
+    }
+
+    nextCard();
   }
 
   function nextCard() {
@@ -880,124 +832,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function renderAnalyticsDashboard() {
     if (dashStreak) dashStreak.textContent = `${statsTracker.data.streak} jour(s)`;
+    if (dashXp) dashXp.textContent = `${statsTracker.data.xp} XP`;
+    if (dashAvgTime) dashAvgTime.textContent = `${statsTracker.getAverageResponseTime()}s`;
     if (dashAccuracy) dashAccuracy.textContent = `${statsTracker.getAccuracyRate()}%`;
-    
-    const dashTotalCards = document.getElementById("dash-total-cards");
-    if (dashTotalCards) dashTotalCards.textContent = parser.cards ? parser.cards.length : 0;
 
-    renderRootDecksStats();
     renderHeatmap();
     renderCharts();
-  }
-
-  function renderRootDecksStats() {
-    const container = document.getElementById("root-decks-stats-container");
-    const countEl = document.getElementById("root-decks-count");
-    if (!container) return;
-
-    container.innerHTML = "";
-    if (!parser || !parser.decks || parser.decks.size === 0) {
-      container.innerHTML = "<span class='text-xs text-slate-400 italic'>Aucun paquet chargé.</span>";
-      if (countEl) countEl.textContent = "0 paquet(s) racine";
-      return;
-    }
-
-    const decks = Array.from(parser.decks.values());
-    const rootNodes = buildTreeFromDecks(decks);
-
-    if (countEl) countEl.textContent = `${rootNodes.length} paquet(s) racine`;
-
-    rootNodes.forEach((rootNode) => {
-      const rootCards = getAllCardsInSubtree(rootNode);
-      const totalCards = rootCards.length;
-
-      let aRevoir = 0;   // 1
-      let difficile = 0; // 2
-      let correct = 0;   // 3
-      let facile = 0;    // 4
-      let nonRevise = 0; // 0
-
-      rootCards.forEach((c) => {
-        const r = statsTracker.data.cardRatings ? statsTracker.data.cardRatings[c.id] : 0;
-        if (r === 1) aRevoir++;
-        else if (r === 2) difficile++;
-        else if (r === 3) correct++;
-        else if (r === 4) facile++;
-        else nonRevise++;
-      });
-
-      const knownCount = correct + facile;
-      const remainingCount = totalCards - knownCount;
-      const knownPct = totalCards > 0 ? Math.round((knownCount / totalCards) * 100) : 0;
-
-      // Segments de la barre visuelle
-      const pctRevoir = totalCards > 0 ? (aRevoir / totalCards) * 100 : 0;
-      const pctDiff = totalCards > 0 ? (difficile / totalCards) * 100 : 0;
-      const pctCorr = totalCards > 0 ? (correct / totalCards) * 100 : 0;
-      const pctFacile = totalCards > 0 ? (facile / totalCards) * 100 : 0;
-      const pctNonRev = totalCards > 0 ? (nonRevise / totalCards) * 100 : 0;
-
-      const cardDiv = document.createElement("div");
-      cardDiv.className = "p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-750/50 space-y-3";
-
-      cardDiv.innerHTML = `
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div class="flex items-center space-x-2">
-            <span class="text-base">📁</span>
-            <span class="font-bold text-slate-900 dark:text-white text-sm">${rootNode.name}</span>
-            <span class="text-xs text-slate-500 font-mono">(${totalCards} carte${totalCards > 1 ? "s" : ""})</span>
-          </div>
-          <div class="flex items-center space-x-2 text-xs font-semibold">
-            <span class="px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50">
-              🟢 ${knownCount} connues (${knownPct}%)
-            </span>
-            <span class="px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50">
-              🔄 ${remainingCount} à réviser
-            </span>
-          </div>
-        </div>
-
-        <!-- Barre de répartition multi-segment -->
-        <div class="w-full h-3 rounded-full bg-slate-200 dark:bg-slate-700 flex overflow-hidden shadow-inner" title="Répartition des cartes">
-          ${pctRevoir > 0 ? `<div style="width: ${pctRevoir}%" class="bg-red-500" title="À revoir : ${aRevoir}"></div>` : ""}
-          ${pctDiff > 0 ? `<div style="width: ${pctDiff}%" class="bg-amber-500" title="Difficile : ${difficile}"></div>` : ""}
-          ${pctCorr > 0 ? `<div style="width: ${pctCorr}%" class="bg-blue-500" title="Correct : ${correct}"></div>` : ""}
-          ${pctFacile > 0 ? `<div style="width: ${pctFacile}%" class="bg-emerald-500" title="Facile : ${facile}"></div>` : ""}
-          ${pctNonRev > 0 ? `<div style="width: ${pctNonRev}%" class="bg-slate-300 dark:bg-slate-600" title="Non révisées : ${nonRevise}"></div>` : ""}
-        </div>
-
-        <!-- Détail chiffré de la répartition -->
-        <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
-          <div class="flex items-center space-x-1.5 p-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-            <span class="w-2.5 h-2.5 rounded-full bg-red-500 inline-block"></span>
-            <span class="text-slate-600 dark:text-slate-400">À revoir:</span>
-            <span class="font-bold text-slate-900 dark:text-white ml-auto">${aRevoir}</span>
-          </div>
-          <div class="flex items-center space-x-1.5 p-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-            <span class="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span>
-            <span class="text-slate-600 dark:text-slate-400">Difficile:</span>
-            <span class="font-bold text-slate-900 dark:text-white ml-auto">${difficile}</span>
-          </div>
-          <div class="flex items-center space-x-1.5 p-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-            <span class="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span>
-            <span class="text-slate-600 dark:text-slate-400">Correct:</span>
-            <span class="font-bold text-slate-900 dark:text-white ml-auto">${correct}</span>
-          </div>
-          <div class="flex items-center space-x-1.5 p-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
-            <span class="text-slate-600 dark:text-slate-400">Facile:</span>
-            <span class="font-bold text-slate-900 dark:text-white ml-auto">${facile}</span>
-          </div>
-          <div class="flex items-center space-x-1.5 p-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-            <span class="w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-slate-600 inline-block"></span>
-            <span class="text-slate-600 dark:text-slate-400">Non révisées:</span>
-            <span class="font-bold text-slate-900 dark:text-white ml-auto">${nonRevise}</span>
-          </div>
-        </div>
-      `;
-
-      container.appendChild(cardDiv);
-    });
   }
 
   function renderHeatmap() {

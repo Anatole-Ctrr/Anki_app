@@ -55,10 +55,8 @@ class AnkiParser {
    * @param {File|ArrayBuffer} fileInput
    * @param {function} [onProgress] Callback de progression (status: string)
    */
-  async loadApkg(fileInput, onProgress = () => {}, reset = true) {
-    if (reset) {
-      this.reset();
-    }
+  async loadApkg(fileInput, onProgress = () => {}) {
+    this.reset();
     await this.initSql();
 
     onProgress("Décompression de l'archive .apkg...");
