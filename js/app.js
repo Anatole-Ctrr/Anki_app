@@ -370,29 +370,49 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!files || files.length === 0) return;
     const fileList = Array.from(files);
 
-    for (const file of fileList) {
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
       try {
-        showStatus(`Analyse et enregistrement de '${file.name}'...`);
+        showStatus(`Analyse et chargement de '${file.name}'...`);
         const arrayBuffer = await file.arrayBuffer();
 
-        // Sauvegarde dans IndexedDB (Session Anatole)
+        // 1. Sauvegarde dans IndexedDB (Session Anatole) en arrière-plan
         try {
           await libraryStore.savePackage(file.name, file.name, arrayBuffer);
+          const savedPackages = await libraryStore.getAllPackages();
+          renderSavedPackagesList(savedPackages);
         } catch (storageErr) {
           console.warn("Sauvegarde IndexedDB ignorée :", storageErr);
         }
+
+        // 2. Chargement direct du paquet dans le moteur Anki Parser (réinitialise au 1er fichier, cumule les suivants)
+        const result = await parser.loadApkg(arrayBuffer, (msg) => showStatus(msg), i === 0);
+
+        // 3. Bascule immédiate de l'écran vers l'application de révision
+        populateDecksAndTree(Array.from(parser.decks.values()));
+        updateGlobalStats({
+          decks: Array.from(parser.decks.values()),
+          totalNotes: parser.notes.size,
+          totalCards: parser.cards.length,
+          totalMedia: parser.mediaMap.size,
+        });
+        switchTab("study");
+
+        uploadSection.classList.add("hidden");
+        mainAppSection.classList.remove("hidden");
+        showStatus(`Paquet '${file.name}' chargé avec succès ! (${result.totalCards} cartes)`);
       } catch (err) {
         console.error(err);
         showStatus(`Erreur avec '${file.name}' : ${err.message}`, true);
+        alert(`Impossible de charger le paquet '${file.name}' :\n${err.message}`);
       }
     }
-
-    await reloadAllLibraryPackages();
   }
 
   // Clic direct n'importe où dans la zone de drag & drop
   dropZone.addEventListener("click", (e) => {
     if (e.target !== fileInput && !e.target.closest("label")) {
+      fileInput.value = "";
       fileInput.click();
     }
   });
@@ -431,13 +451,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const blob = await response.blob();
       const arrayBuffer = await blob.arrayBuffer();
 
-      try {
-        await libraryStore.savePackage("demo_deck.apkg", "Démo - Web & Python", arrayBuffer);
-        const savedPackages = await libraryStore.getAllPackages();
-        renderSavedPackagesList(savedPackages);
-      } catch (storageErr) {}
-
-      const result = await parser.loadApkg(arrayBuffer);
+      const result = await parser.loadApkg(arrayBuffer, (msg) => showStatus(msg));
       populateDecksAndTree(result.decks);
       updateGlobalStats(result);
       switchTab("study");
@@ -445,8 +459,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       uploadSection.classList.add("hidden");
       mainAppSection.classList.remove("hidden");
       showStatus("Paquet démo chargé et enregistré dans votre bibliothèque !");
+
+      try {
+        await libraryStore.savePackage("demo_deck.apkg", "Démo - Web & Python", arrayBuffer);
+        const savedPackages = await libraryStore.getAllPackages();
+        renderSavedPackagesList(savedPackages);
+      } catch (storageErr) {}
     } catch (err) {
+      console.error(err);
       showStatus(`Impossible de charger le paquet démo : ${err.message}`, true);
+      alert(`Erreur lors du chargement du paquet démo :\n${err.message}`);
     }
   });
 
