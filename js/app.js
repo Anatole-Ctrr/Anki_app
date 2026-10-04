@@ -371,14 +371,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function handleFile(file) {
     if (!file) return;
     try {
-      showStatus("Analyse et enregistrement du paquet...");
+      showStatus("Lecture et décompression du paquet...");
       const arrayBuffer = await file.arrayBuffer();
 
-      // Sauvegarde dans IndexedDB (Session Anatole)
-      await libraryStore.savePackage(file.name, file.name, arrayBuffer);
-      const savedPackages = await libraryStore.getAllPackages();
-      renderSavedPackagesList(savedPackages);
-
+      // 1. Décodage et chargement immédiat des cartes (prioritaire)
       const result = await parser.loadApkg(arrayBuffer, (msg) => showStatus(msg));
 
       populateDecksAndTree(result.decks);
@@ -387,12 +383,35 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       uploadSection.classList.add("hidden");
       mainAppSection.classList.remove("hidden");
-      showStatus(`Paquet '${file.name}' enregistré et chargé ! (${result.totalCards} cartes)`);
+      showStatus(`Paquet '${file.name}' chargé avec succès ! (${result.totalCards} cartes)`);
+
+      // 2. Sauvegarde facultative dans IndexedDB (Session Anatole) en arrière-plan
+      try {
+        await libraryStore.savePackage(file.name, file.name, arrayBuffer);
+        const savedPackages = await libraryStore.getAllPackages();
+        renderSavedPackagesList(savedPackages);
+      } catch (storageErr) {
+        console.warn("Sauvegarde IndexedDB ignorée :", storageErr);
+      }
     } catch (err) {
-      console.error(err);
+      console.error("Erreur chargement paquet :", err);
       showStatus(`Erreur : ${err.message}`, true);
+      alert(`Impossible d'ouvrir le fichier '${file.name}' :\n\n${err.message}\n\nSi le problème persiste, vérifiez votre connexion Internet pour le téléchargement du moteur SQLite WebAssembly ou rafraîchissez la page sans cache (Ctrl + F5).`);
     }
   }
+
+  // Clic direct n'importe où dans la zone de drag & drop
+  dropZone.addEventListener("click", (e) => {
+    if (e.target !== fileInput && !e.target.closest("label")) {
+      fileInput.value = "";
+      fileInput.click();
+    }
+  });
+
+  // Réinitialiser la valeur du sélecteur à chaque clic
+  fileInput.addEventListener("click", () => {
+    fileInput.value = "";
+  });
 
   // Drag & drop
   ["dragenter", "dragover"].forEach((eventName) => {
