@@ -69,3 +69,106 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(156, 163, 175, 0.6);
 }
+
+/* ==========================================================================
+   Lisibilité & Contraste Élevé pour les Cartes (Recto et Verso)
+   Empêche tout texte blanc sur fond clair ou texte sombre sur fond noir.
+   ========================================================================== */
+
+.learn-card-face {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+@media (prefers-color-scheme: dark) {
+  .learn-card-face {
+    background-color: #1e293b !important; /* slate-800 */
+    color: #f8fafc !important; /* slate-50 */
+    border-color: #334155 !important;
+  }
+}
+
+/* Face verso : accentuation contrastée */
+.learn-card-back {
+  background-color: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  .learn-card-back {
+    background-color: #1e293b !important;
+    border-color: #6366f1 !important; /* indigo accent */
+  }
+}
+
+/* Contenu textuel injecté (Question & Réponse) */
+#card-front-content,
+#card-back-content {
+  color: #0f172a;
+}
+
+#card-front-content *,
+#card-back-content * {
+  max-width: 100%;
+}
+
+@media (prefers-color-scheme: dark) {
+  #card-front-content,
+  #card-back-content {
+    color: #f8fafc !important;
+  }
+}
+
+/* Neutraliser les styles de fond et de couleur importés d'Anki (.card)
+   qui causent des textes blancs sur fond clair ou vice-versa */
+#card-front-content .card,
+#card-back-content .card,
+.learn-card-face .card {
+  background-color: transparent !important;
+  color: inherit !important;
+}
+
+/* Séparateur standard d'Anki <hr id="answer"> */
+#card-back-content hr#answer,
+.learn-card-face hr {
+  border: none;
+  height: 2px;
+  background: #cbd5e1;
+  margin: 1.5rem auto;
+  width: 80%;
+  border-radius: 9999px;
+}
+
+@media (prefers-color-scheme: dark) {
+  #card-back-content hr#answer,
+  .learn-card-face hr {
+    background: #475569 !important;
+  }
+}
+
+/* Style des textes à trous (Cloze deletions) */
+.learn-card-face .cloze {
+  font-weight: 700;
+  color: #2563eb !important;
+  background-color: rgba(59, 130, 246, 0.1);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.25rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .learn-card-face .cloze {
+    color: #60a5fa !important;
+    background-color: rgba(59, 130, 246, 0.2);
+  }
+}
+
+/* Images responsives et centrées */
+#card-front-content img,
+#card-back-content img {
+  max-width: 100%;
+  max-height: 240px;
+  height: auto;
+  border-radius: 0.75rem;
+  margin: 0.5rem auto;
+  display: inline-block;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}

@@ -184,13 +184,6 @@
                 <div id="card-tags" class="flex flex-wrap gap-1.5 mt-1"></div>
               </div>
               <div class="flex items-center space-x-2 sm:space-x-3">
-                
-                <!-- Bouton Quizlet Mode : Réviser uniquement les cartes marquées ⭐ -->
-                <button id="filter-starred-btn" class="px-3 py-1 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700/50 rounded-lg text-xs font-semibold hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors flex items-center gap-1.5" title="Mode Quizlet : réviser uniquement les cartes marquées ⭐">
-                  <span>⭐ Cartes marquées</span>
-                  <span id="starred-count-badge" class="px-1.5 py-0.2 bg-amber-200 dark:bg-amber-800 rounded-full font-bold">0</span>
-                </button>
-
                 <!-- Bouton Lancement Mode Apprentissage Quizlet -->
                 <button id="open-learn-btn" class="px-3 py-1 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer" title="Apprendre ce paquet en style Quizlet dans une nouvelle fenêtre">
                   <span>🚀 Mode Apprentissage</span>
@@ -212,11 +205,6 @@
 
             <!-- CARTE FLASHCARD -->
             <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col flex-1 relative">
-              
-              <!-- Bouton Étoile ⭐ sur la carte (Quizlet Star) -->
-              <button id="star-card-btn" class="absolute top-4 right-4 p-2 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-slate-400 transition-all z-20 text-xl" title="Marquer cette carte (Étoile Quizlet - Raccourci *)">
-                ⭐
-              </button>
 
               <div id="card-container" class="p-8 sm:p-10 flex-1 flex flex-col">
                 <!-- RECTO (Question) -->
@@ -233,7 +221,7 @@
               </div>
 
               <!-- BARRE D'ACTIONS INFERIEURE -->
-              <div class="bg-slate-50 dark:bg-slate-850 p-4 border-t border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div class="bg-slate-50 dark:bg-slate-800 p-4 border-t border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-4">
                 
                 <!-- Navigation précédente/suivante -->
                 <div class="flex items-center space-x-2">
@@ -269,9 +257,6 @@
               </div>
             </div>
 
-            <p class="text-xs text-center text-slate-400 mt-4">
-              Astuce : Appuyez sur <kbd class="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-800 rounded">*</kbd> pour marquer la carte avec une étoile ⭐.
-            </p>
           </div>
 
           <!-- VUE 2 : EXPLORATEUR DE CARTES -->
@@ -285,8 +270,7 @@
               <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
                   <thead>
-                    <tr class="bg-slate-100 dark:bg-slate-750 text-slate-600 dark:text-slate-300 text-xs font-semibold uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
-                      <th class="py-3 px-3 w-10 text-center">⭐</th>
+                    <tr class="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-semibold uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
                       <th class="py-3 px-3 w-10">#</th>
                       <th class="py-3 px-4">Recto (Question)</th>
                       <th class="py-3 px-4">Verso (Réponse)</th>
@@ -394,19 +378,19 @@
                 📦 Composition du Paquet Actuel
               </h4>
               <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center mb-6">
-                <div class="p-3 bg-slate-50 dark:bg-slate-750 rounded-xl">
+                <div class="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
                   <span class="text-xl font-bold text-blue-600 dark:text-blue-400" id="stat-deck-count">0</span>
                   <p class="text-xs text-slate-500 mt-0.5">Paquet(s)</p>
                 </div>
-                <div class="p-3 bg-slate-50 dark:bg-slate-750 rounded-xl">
+                <div class="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
                   <span class="text-xl font-bold text-indigo-600 dark:text-indigo-400" id="stat-card-count">0</span>
                   <p class="text-xs text-slate-500 mt-0.5">Cartes</p>
                 </div>
-                <div class="p-3 bg-slate-50 dark:bg-slate-750 rounded-xl">
+                <div class="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
                   <span class="text-xl font-bold text-purple-600 dark:text-purple-400" id="stat-note-count">0</span>
                   <p class="text-xs text-slate-500 mt-0.5">Notes</p>
                 </div>
-                <div class="p-3 bg-slate-50 dark:bg-slate-750 rounded-xl">
+                <div class="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
                   <span class="text-xl font-bold text-emerald-600 dark:text-emerald-400" id="stat-media-count">0</span>
                   <p class="text-xs text-slate-500 mt-0.5">Fichiers Médias</p>
                 </div>

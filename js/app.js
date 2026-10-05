@@ -127,9 +127,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const shuffleBtn = document.getElementById("shuffle-btn");
   const cardTagsEl = document.getElementById("card-tags");
   const openLearnBtn = document.getElementById("open-learn-btn");
-  const starCardBtn = document.getElementById("star-card-btn");
-  const filterStarredBtn = document.getElementById("filter-starred-btn");
-  const starredCountBadge = document.getElementById("starred-count-badge");
 
   // Dashboard Stats Elements
   const dashStreak = document.getElementById("dash-streak");
@@ -159,78 +156,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   let chartRatingsInstance = null;
   let chartActivityInstance = null;
 
-  // --- Marquage Étoile ⭐ (Quizlet Mode) ---
-  const STARRED_KEY = "anki_starred_cards_v1";
-  let starredCardIds = new Set(JSON.parse(localStorage.getItem(STARRED_KEY) || "[]"));
-  let isStarredOnlyMode = false;
-
-  function saveStarredCards() {
-    localStorage.setItem(STARRED_KEY, JSON.stringify(Array.from(starredCardIds)));
-    updateStarredBadge();
-  }
-
-  function toggleStarCard(cardId) {
-    if (!cardId) return;
-    if (starredCardIds.has(cardId)) {
-      starredCardIds.delete(cardId);
-      showStatus("Étoile retirée de la carte");
-    } else {
-      starredCardIds.add(cardId);
-      showStatus("Carte marquée d'une étoile ⭐ !");
-    }
-    saveStarredCards();
-    updateStarUI();
-    renderExplorerTable();
-  }
-
-  function updateStarredBadge() {
-    if (starredCountBadge) starredCountBadge.textContent = starredCardIds.size;
-  }
-
-  function updateStarUI() {
-    if (!starCardBtn) return;
-    if (currentCards.length === 0) {
-      starCardBtn.classList.remove("star-active");
-      return;
-    }
-    const card = currentCards[currentIndex];
-    if (card && starredCardIds.has(card.id)) {
-      starCardBtn.classList.add("star-active");
-    } else {
-      starCardBtn.classList.remove("star-active");
-    }
-  }
-
-  if (starCardBtn) {
-    starCardBtn.addEventListener("click", () => {
-      if (currentCards.length > 0) {
-        toggleStarCard(currentCards[currentIndex].id);
-      }
-    });
-  }
-
-  if (filterStarredBtn) {
-    filterStarredBtn.addEventListener("click", () => {
-      isStarredOnlyMode = !isStarredOnlyMode;
-      filterStarredBtn.classList.toggle("bg-amber-500", isStarredOnlyMode);
-      filterStarredBtn.classList.toggle("text-white", isStarredOnlyMode);
-
-      if (isStarredOnlyMode) {
-        showStatus("Mode Quizlet activé : Révision des cartes marquées ⭐ uniquement.");
-      } else {
-        showStatus("Mode normal rétabli.");
-      }
-
-      if (currentDeckNode) {
-        selectDeckByNode(currentDeckNode);
-      } else if (parser.decks.size > 0) {
-        const rootNodes = buildTreeFromDecks(Array.from(parser.decks.values()));
-        if (rootNodes.length > 0) selectDeckByNode(rootNodes[0]);
-      }
-    });
-  }
-
-  updateStarredBadge();
   updateHeaderGamification();
 
   // --- Chargement de la bibliothèque IndexedDB au démarrage ---
@@ -505,7 +430,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const isSelected = currentDeckNode && currentDeckNode.path === node.path;
 
       const itemDiv = document.createElement("div");
-      itemDiv.className = `tree-item flex items-center justify-between px-2 py-1.5 rounded-lg text-xs cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-750 transition-colors ${
+      itemDiv.className = `tree-item flex items-center justify-between px-2 py-1.5 rounded-lg text-xs cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${
         isSelected ? "tree-node-selected" : ""
       }`;
 
@@ -581,15 +506,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     currentDeckNode = node;
     const subCards = getAllCardsInSubtree(node);
     currentDeckNameEl.textContent = node.path;
-
-    currentCards = isStarredOnlyMode
-      ? subCards.filter((c) => starredCardIds.has(c.id))
-      : subCards;
-
+    currentCards = subCards;
     currentIndex = 0;
     renderCurrentCard();
     renderExplorerTable();
-    updateStarUI();
 
     const rootNodes = buildTreeFromDecks(Array.from(parser.decks.values()));
     renderDeckTree(rootNodes, deckTreeContainer);
@@ -614,12 +534,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     showAnswerBtn.classList.remove("hidden");
 
     if (currentCards.length === 0) {
-      const msg = isStarredOnlyMode ? "Aucune carte marquée ⭐ dans ce paquet." : "Aucune carte dans ce paquet.";
-      cardFrontEl.innerHTML = `<p class="text-gray-400 italic py-8">${msg}</p>`;
+      cardFrontEl.innerHTML = `<p class="text-gray-400 italic py-8">Aucune carte dans ce paquet.</p>`;
       cardCounterEl.textContent = "0 / 0";
       cardProgressBar.style.width = "0%";
       cardTagsEl.innerHTML = "";
-      updateStarUI();
       return;
     }
 
@@ -651,7 +569,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     cardContainer.scrollTop = 0;
-    updateStarUI();
     triggerMathJax();
   }
 
@@ -768,8 +685,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       nextCard();
     } else if (e.code === "ArrowLeft") {
       prevCard();
-    } else if (e.key === "*" || e.code === "KeyS") {
-      if (currentCards.length > 0) toggleStarCard(currentCards[currentIndex].id);
     } else if (isAnswerShown) {
       if (e.code === "Digit1") handleRating(1);
       else if (e.code === "Digit2") handleRating(2);
@@ -800,22 +715,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       const frontClean = stripHtml(rendered.front);
       const backClean = stripHtml(rendered.back);
       const tagsStr = (card.note?.tags || []).join(", ") || "-";
-      const isStarred = starredCardIds.has(card.id);
 
       tr.innerHTML = `
-        <td class="py-3 px-3 text-center text-sm star-cell">${isStarred ? "⭐" : "☆"}</td>
         <td class="py-3 px-3 text-xs font-mono text-slate-400">${idx + 1}</td>
         <td class="py-3 px-4 text-sm font-medium text-slate-800 dark:text-slate-200 max-w-xs truncate">${frontClean}</td>
         <td class="py-3 px-4 text-sm text-slate-600 dark:text-slate-400 max-w-xs truncate">${backClean}</td>
         <td class="py-3 px-4 text-xs text-slate-500">${tagsStr}</td>
       `;
 
-      tr.addEventListener("click", (e) => {
-        if (e.target.classList.contains("star-cell")) {
-          e.stopPropagation();
-          toggleStarCard(card.id);
-          return;
-        }
+      tr.addEventListener("click", () => {
         const foundIdx = currentCards.findIndex((c) => c.id === card.id);
         if (foundIdx !== -1) {
           currentIndex = foundIdx;
@@ -927,7 +835,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const pctNonRev = totalCards > 0 ? (nonRevise / totalCards) * 100 : 0;
 
       const cardDiv = document.createElement("div");
-      cardDiv.className = "p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-750/50 space-y-3";
+      cardDiv.className = "p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 space-y-3";
 
       cardDiv.innerHTML = `
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">

@@ -192,14 +192,7 @@ mjx-container[jax="CHTML"][display="true"] {
   margin: 0.5rem 0;
 }
 
-/* --- STYLES ARBORESCENCE (+/-) & BOUTON ÉTOILE ⭐ --- */
-
-/* Étoile Quizlet active */
-.star-active {
-  color: #f59e0b !important;
-  transform: scale(1.15);
-  filter: drop-shadow(0 2px 4px rgba(245, 158, 11, 0.4));
-}
+/* --- STYLES ARBORESCENCE (+/-) --- */
 
 /* Boutons de bascule + / - d'arborescence */
 .tree-toggle-btn {
