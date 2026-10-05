@@ -125,7 +125,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const nextCardBtn = document.getElementById("next-card-btn");
   const shuffleBtn = document.getElementById("shuffle-btn");
   const cardTagsEl = document.getElementById("card-tags");
-  const cardTimerEl = document.getElementById("card-timer");
+  const openLearnBtn = document.getElementById("open-learn-btn");
   const starCardBtn = document.getElementById("star-card-btn");
   const filterStarredBtn = document.getElementById("filter-starred-btn");
   const starredCountBadge = document.getElementById("starred-count-badge");
@@ -153,11 +153,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   let currentIndex = 0;
   let isAnswerShown = false;
   let styleElement = null;
-
-  // Chronomètre variables
-  let timerStartTime = 0;
-  let timerInterval = null;
-  let currentCardResponseTime = 0;
 
   // Chart instances
   let chartRatingsInstance = null;
@@ -316,28 +311,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (gamificationHeader) gamificationHeader.classList.remove("hidden");
   }
 
-  // --- Gestion du Chronomètre ---
-  function startCardTimer() {
-    stopCardTimer();
-    timerStartTime = Date.now();
-    currentCardResponseTime = 0;
-    if (cardTimerEl) cardTimerEl.textContent = "0.0s";
-
-    timerInterval = setInterval(() => {
-      const elapsed = (Date.now() - timerStartTime) / 1000;
-      if (cardTimerEl) cardTimerEl.textContent = `${elapsed.toFixed(1)}s`;
-    }, 100);
-  }
-
-  function stopCardTimer() {
-    if (timerInterval) {
-      clearInterval(timerInterval);
-      timerInterval = null;
-      if (timerStartTime > 0) {
-        currentCardResponseTime = (Date.now() - timerStartTime) / 1000;
-      }
-    }
-  }
 
   // --- Notifications Toast ---
   function showStatus(message, isError = false) {
@@ -645,7 +618,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       cardCounterEl.textContent = "0 / 0";
       cardProgressBar.style.width = "0%";
       cardTagsEl.innerHTML = "";
-      stopCardTimer();
       updateStarUI();
       return;
     }
@@ -677,7 +649,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
     }
 
-    startCardTimer();
     cardContainer.scrollTop = 0;
     updateStarUI();
     triggerMathJax();
@@ -686,7 +657,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   function showAnswer() {
     if (isAnswerShown) return;
     isAnswerShown = true;
-    stopCardTimer();
 
     cardAnswerSection.classList.remove("hidden");
     showAnswerBtn.classList.add("hidden");
@@ -721,7 +691,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       currentIndex++;
       renderCurrentCard();
     } else {
-      stopCardTimer();
       showStatus("Vous avez parcouru toutes les cartes de ce paquet ! 🎉");
     }
   }
@@ -736,6 +705,44 @@ document.addEventListener("DOMContentLoaded", async () => {
   showAnswerBtn.addEventListener("click", showAnswer);
   prevCardBtn.addEventListener("click", prevCard);
   nextCardBtn.addEventListener("click", nextCard);
+
+  if (openLearnBtn) {
+    openLearnBtn.addEventListener("click", () => {
+      if (!currentCards || currentCards.length === 0) {
+        showStatus("Aucune carte à apprendre dans ce paquet !", true);
+        return;
+      }
+      const deckName = (currentDeckNode && currentDeckNode.path) || "Paquet Anki";
+
+      // Préparation des cartes avec rendu HTML, images et mathématiques
+      const learnCards = currentCards.map((card) => {
+        const rendered = parser.renderCard(card);
+        return {
+          id: card.id,
+          deckName: (card.deck && card.deck.name) || deckName,
+          front: rendered.front || "",
+          back: rendered.back || "",
+          css: rendered.css || "",
+          tags: (card.note && card.note.tags) || [],
+        };
+      });
+
+      const sessionPayload = {
+        deckName: deckName,
+        totalCards: learnCards.length,
+        timestamp: Date.now(),
+        cards: learnCards,
+      };
+
+      try {
+        localStorage.setItem("anki_learn_active_deck", JSON.stringify(sessionPayload));
+        window.open("learn.html", "_blank");
+      } catch (err) {
+        console.error("Erreur préparation session apprentissage :", err);
+        showStatus("Impossible d'ouvrir le Mode Apprentissage : " + err.message, true);
+      }
+    });
+  }
 
   document.querySelector(".rating-1")?.addEventListener("click", () => handleRating(1));
   document.querySelector(".rating-2")?.addEventListener("click", () => handleRating(2));

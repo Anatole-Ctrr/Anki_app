@@ -1,0 +1,71 @@
+/* Styles dédiés au Mode Apprentissage (Style Quizlet) */
+
+/* Conteneur 3D Flashcard */
+.learn-card-scene {
+  perspective: 1400px;
+  width: 100%;
+  min-height: 380px;
+  max-height: 550px;
+  display: flex;
+}
+
+.learn-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 380px;
+  transition: transform 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transform-style: preserve-3d;
+  cursor: pointer;
+}
+
+.learn-card-scene.is-flipped .learn-card-inner {
+  transform: rotateY(180deg);
+}
+
+.learn-card-face {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  border-radius: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+}
+
+.learn-card-front {
+  transform: rotateY(0deg);
+}
+
+.learn-card-back {
+  transform: rotateY(180deg);
+}
+
+/* Animations de transition */
+@keyframes popSuccess {
+  0% { transform: scale(0.95); opacity: 0; }
+  70% { transform: scale(1.02); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.animate-pop {
+  animation: popSuccess 0.35s ease-out forwards;
+}
+
+/* Scrollbars personnalisées discrètes */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.4);
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.6);
+}
