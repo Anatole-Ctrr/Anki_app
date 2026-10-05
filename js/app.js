@@ -80,6 +80,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const parser = new AnkiParser();
   const statsTracker = new StatsTracker();
   const libraryStore = new LibraryStore();
+  const learnStore = new LearnStore();
 
   // Pré-chargement silencieux en arrière-plan du moteur SQLite WebAssembly (accélère le premier import)
   parser.initSql().catch((err) => {
@@ -707,12 +708,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   nextCardBtn.addEventListener("click", nextCard);
 
   if (openLearnBtn) {
-    openLearnBtn.addEventListener("click", () => {
+    openLearnBtn.addEventListener("click", async () => {
       if (!currentCards || currentCards.length === 0) {
         showStatus("Aucune carte à apprendre dans ce paquet !", true);
         return;
       }
       const deckName = (currentDeckNode && currentDeckNode.path) || "Paquet Anki";
+
+      showStatus("Préparation du Mode Apprentissage...");
 
       // Préparation des cartes avec rendu HTML, images et mathématiques
       const learnCards = currentCards.map((card) => {
@@ -735,7 +738,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       };
 
       try {
-        localStorage.setItem("anki_learn_active_deck", JSON.stringify(sessionPayload));
+        // Enregistrement dans IndexedDB (capacité illimitée, sans blocage de quota)
+        await learnStore.setActiveDeck(sessionPayload);
+        try { localStorage.removeItem("anki_learn_active_deck"); } catch (e) {}
         window.open("learn.html", "_blank");
       } catch (err) {
         console.error("Erreur préparation session apprentissage :", err);

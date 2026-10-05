@@ -66,13 +66,32 @@ document.addEventListener("DOMContentLoaded", () => {
   let roundMasteredCount = 0;
   let roundLearningCount = 0;
 
+  const learnStore = new LearnStore();
+
   // --- 1. Initialisation ---
   initApp();
 
-  function initApp() {
-    // 1. Récupération des données du paquet transmises par l'application principale
-    const rawPayload = localStorage.getItem("anki_learn_active_deck");
-    if (!rawPayload) {
+  async function initApp() {
+    // 1. Récupération des données du paquet (IndexedDB en priorité sans limite de quota, fallback localStorage)
+    let activePayload = null;
+    try {
+      activePayload = await learnStore.getActiveDeck();
+    } catch (dbErr) {
+      console.warn("Lecture IndexedDB échouée, tentative fallback localStorage :", dbErr);
+    }
+
+    if (!activePayload) {
+      const rawPayload = localStorage.getItem("anki_learn_active_deck");
+      if (rawPayload) {
+        try {
+          activePayload = JSON.parse(rawPayload);
+        } catch (e) {
+          console.error("Payload localStorage invalide :", e);
+        }
+      }
+    }
+
+    if (!activePayload) {
       deckTitleEl.textContent = "Aucun paquet sélectionné";
       cardFrontContent.innerHTML = `
         <div class="py-12 space-y-4">
@@ -83,13 +102,6 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
       `;
       btnFlipCard.classList.add("hidden");
-      return;
-    }
-
-    try {
-      activePayload = JSON.parse(rawPayload);
-    } catch (e) {
-      console.error("Payload invalide :", e);
       return;
     }
 
@@ -118,7 +130,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // 2. Vérification de session précédente enregistrée
-    const savedSession = loadSavedSession();
+    const savedSession = await loadSavedSession();
     if (savedSession && hasActiveProgress(savedSession)) {
       showResumeBanner(savedSession);
     } else {
@@ -127,7 +139,12 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // --- 2. Gestion de la persistance de session ---
-  function loadSavedSession() {
+  async function loadSavedSession() {
+    try {
+      const dbSession = await learnStore.getSession(deckName);
+      if (dbSession) return dbSession;
+    } catch (e) {}
+
     try {
       const raw = localStorage.getItem(sessionKey);
       return raw ? JSON.parse(raw) : null;
@@ -145,7 +162,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return (mastered > 0 || learning > 0) && mastered < cardsMap.size;
   }
 
-  function saveSession() {
+  async function saveSession() {
     const cardStages = {};
     cardsMap.forEach((c, id) => {
       cardStages[id] = {
@@ -165,11 +182,17 @@ document.addEventListener("DOMContentLoaded", () => {
       cardStages,
     };
 
+    // 1. Sauvegarde dans IndexedDB (prioritaire, stockage illimité)
+    try {
+      await learnStore.saveSession(deckName, sessionData);
+    } catch (dbErr) {
+      console.warn("Erreur sauvegarde session IndexedDB :", dbErr);
+    }
+
+    // 2. Sauvegarde miroir localStorage (tolérance aux erreurs de quota)
     try {
       localStorage.setItem(sessionKey, JSON.stringify(sessionData));
-    } catch (e) {
-      console.warn("Erreur d'écriture localStorage pour la session :", e);
-    }
+    } catch (e) {}
   }
 
   function showResumeBanner(savedSession) {
@@ -196,9 +219,10 @@ document.addEventListener("DOMContentLoaded", () => {
       startNextRound();
     };
 
-    btnRestartSession.onclick = () => {
+    btnRestartSession.onclick = async () => {
       resumeBanner.classList.add("hidden");
-      localStorage.removeItem(sessionKey);
+      try { await learnStore.deleteSession(deckName); } catch(e) {}
+      try { localStorage.removeItem(sessionKey); } catch(e) {}
       startNewSession();
     };
   }
@@ -429,8 +453,9 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Recommencer ou Fermer après victoire
-  btnVictoryRestart.addEventListener("click", () => {
-    localStorage.removeItem(sessionKey);
+  btnVictoryRestart.addEventListener("click", async () => {
+    try { await learnStore.deleteSession(deckName); } catch(e) {}
+    try { localStorage.removeItem(sessionKey); } catch(e) {}
     startNewSession();
   });
 
